@@ -1,0 +1,15 @@
+{
+  "name": "nozle",
+  "description": "Nozle plugins for coding agents",
+  "owner": {
+    "name": "Nozle"
+  },
+  "plugins": [
+    {
+      "name": "nozle-agent-kit",
+      "source": "./",
+      "description": "Guided Nozle billing integration for coding agents",
+      "version": "1.0.0"
+    }
+  ]
+}

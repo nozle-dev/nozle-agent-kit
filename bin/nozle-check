@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -eu
+plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+exec node "$plugin_dir/shared/scripts/nozle-check.mjs" "$@"

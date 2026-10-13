@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "nozle-agent-kit",
+  "version": "1.0.0",
+  "description": "Guided Nozle billing integration for coding agents",
+  "author": {
+    "name": "Nozle"
+  }
+}

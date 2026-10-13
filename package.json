@@ -1,0 +1,14 @@
+{
+  "name": "nozle-agent-kit",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "build:validator": "bun build src/check.ts --target=node --outfile shared/scripts/nozle-check.mjs && bun scripts/sync-skills.ts",
+    "sync:skills": "bun scripts/sync-skills.ts"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}

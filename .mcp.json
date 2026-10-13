@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "nozle-docs": {
+      "type": "http",
+      "url": "https://docs.nozle.dev/mcp"
+    },
+    "nozle-account": {
+      "type": "http",
+      "url": "${NOZLE_ACCOUNT_MCP_URL:-https://api.nozle.app/core/mcp}"
+    }
+  }
+}

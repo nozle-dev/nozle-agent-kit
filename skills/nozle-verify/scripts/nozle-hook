@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+# Runs the Nozle guards only while an integration record exists above the working directory, so a
+# missing or broken `node` can never block work in projects that are not integrating Nozle.
+# Shell builtins only: this check must work even when nothing else is on PATH.
+dir=$(pwd)
+while :; do
+  if [ -e "$dir/nozle.integration.yaml" ] || [ -e "$dir/nozle-setup-plan.yaml" ]; then
+    exec node "${0%/*}/nozle-check.mjs" hook "$@"
+  fi
+  parent=${dir%/*}
+  [ -z "$parent" ] && parent=/
+  [ "$parent" = "$dir" ] && exit 0
+  dir=$parent
+done

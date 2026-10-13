@@ -1,0 +1,8 @@
+{
+  "name": "nozle-agent-kit",
+  "version": "1.0.0",
+  "description": "Guided Nozle billing integration for coding agents",
+  "author": {
+    "name": "Nozle"
+  }
+}

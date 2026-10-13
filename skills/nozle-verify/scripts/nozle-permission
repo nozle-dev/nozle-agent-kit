@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# PermissionRequest hook: approves only the exact read-only nozle-check commands the skills run, so the
+# user is not asked about them. It does nothing for any other command or project (no node started),
+# and it never denies; the guards in nozle-hook decide refusals.
+input=$(cat)
+case $input in
+  *nozle-check*) printf '%s' "$input" | exec node "${0%/*}/nozle-check.mjs" hook --host claude ;;
+esac
+exit 0
