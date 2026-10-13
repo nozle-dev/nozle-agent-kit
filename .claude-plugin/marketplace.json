@@ -9,7 +9,7 @@
       "name": "nozle-agent-kit",
       "source": "./",
       "description": "Guided Nozle billing integration for coding agents",
-      "version": "1.0.0"
+      "version": "1.0.1"
     }
   ]
 }

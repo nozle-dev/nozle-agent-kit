@@ -47,7 +47,7 @@ claude plugin marketplace add nozle-dev/nozle-agent-kit
 claude plugin install nozle-agent-kit@nozle
 ```
 
-This installs the nine skills, three helper agents, the guard hooks, and two MCP servers: `nozle-docs` (public docs) and `nozle-account` (your account, `https://api.nozle.app/core/mcp`). `claude plugin details nozle-agent-kit@nozle` lists them. Update later with `claude plugin marketplace update nozle` and `claude plugin update nozle-agent-kit@nozle`.
+This installs the nine skills, three helper agents, the guard hooks, and two MCP servers: `nozle-docs` (public docs) and `nozle-account` (your account, `https://api.nozle.app/core/mcp`). `claude plugin details nozle-agent-kit@nozle` lists them. Update later with `claude plugin marketplace update nozle` and `claude plugin update nozle-agent-kit@nozle` (see "Updating an installed plugin").
 
 ### Codex CLI
 
@@ -259,6 +259,21 @@ bun test
 bun run build:validator      # rebuilds nozle-check and copies the shared references into every skill
 claude plugin validate --strict .
 ```
+
+### Releasing
+
+Claude Code and Codex cache an installed plugin by its version, so every release needs a new version number, or users who already installed it keep the old copy.
+
+1. Add a `## [x.y.z] - YYYY-MM-DD` section at the top of `CHANGELOG.md` describing the changes.
+2. `bun run release x.y.z` sets the version in `plugin.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `package.json`. It refuses a version that isn't newer, or one without a changelog entry.
+3. `bun run build:validator && bun test && claude plugin validate --strict .`. A test fails if the manifests disagree on the version or the changelog lacks it.
+4. Commit, tag `vx.y.z`, and push `main` and that tag (`git push origin main vx.y.z`; never `--tags`).
+5. `gh release create vx.y.z --notes "<the changelog section>"`.
+
+### Updating an installed plugin
+
+- **Claude Code:** `claude plugin marketplace update nozle`, then `claude plugin update nozle-agent-kit@nozle`.
+- **Codex:** `codex plugin marketplace upgrade nozle`, then `codex plugin add nozle-agent-kit@nozle`. After that, run the `hosts codex --write` command again in each app, because the hook path contains the version folder.
 
 Shared sources live in `shared/references/` and `shared/scripts/`; `build:validator` copies them into each skill so every skill installs on its own (a test fails if a copy drifts). `.claude-plugin/` holds the Claude Code manifest and marketplace, `plugin.json`, `mcp.json` and `.agents/plugins/marketplace.json` the portable and Codex ones, and `hooks/hooks.json` the Claude Code hooks.
 
