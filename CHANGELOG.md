@@ -8,7 +8,8 @@ Each release raises the version in every manifest (`bun scripts/release.ts <vers
 - An unanswered question was taken as an answer. Codex closes an unanswered `request_user_input` after about two minutes and returns empty answers. The agent then used its own recommendation as the choice, recorded the goal and kept working. Now:
   - an empty, dismissed or timed-out question decides nothing and is asked again as text;
   - after asking, the agent ends its turn and waits;
-  - goals enter a draft record only with a `decisions` entry `goals` whose basis is the user's answer, and the Stop guard refuses a draft without one.
+  - goals enter a draft record only with a `decisions` entry `goals` whose basis is the user's answer, and the Stop guard refuses a draft without one;
+  - the guard says to ask and stop, never to write that entry itself. A Codex run had met the check by inventing a `goals` answer for an older record.
 - Goal questions on a host without multi-select (Codex) now offer the recommended set as the first option, with smaller sets as the others; any numbers can be typed in the free-text answer.
 
 ### Changed
