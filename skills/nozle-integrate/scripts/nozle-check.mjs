@@ -8587,7 +8587,7 @@ function stop(root, input) {
   if (creators.length > 1) {
     findings.push(`More than one file creates subscriptions (${creators.join(", ")}); keep one code path that looks up the active subscription before creating one.`);
   }
-  return findings.length ? deny(`${findings.join(" ")} Fix each one in the code when this session's task includes editing; when it does not (status, audit, verify without approval), list them for the user as open findings instead. Write an exception in nozle-integration-report.md only when the fix is impossible (for example no stored or request id identifies the unit), and never argue with this check in your reply. Then end with your normal hand-off summary for the user: what was built, what changed from the approved scope, what is unverified, and the dashboard steps.`) : allow();
+  return findings.length ? deny(`${findings.join(" ")} Fix each one in the code when this session's task includes editing; when it does not (status, audit, verify without approval), list them for the user as open findings instead. Write an exception in nozle-integration-report.md only when the fix is impossible (for example no stored or request id identifies the unit), and never argue with this check in your reply. ${handoff ? "Then end with your normal hand-off summary for the user: what was built, what changed from the approved scope, what is unverified, and the dashboard steps." : "Then finish this step's reply as usual (the choices, the scope for approval, or the build progress) with these items as one short list; the build is not finished, so do not write a hand-off summary."}`) : allow();
 }
 function runHook(event, input) {
   if (!hookEvents.includes(event))

@@ -427,3 +427,14 @@ test("session-start restates what the record settled, so a compacted session kee
   expect(context).toContain("activities still waiting for the user's answer: email-send");
   expect(context.length).toBeLessThan(2000);
 });
+
+test("stop asks for a hand-off summary only when the record is at hand-off", () => {
+  writeRecord({ self_review: undefined, tasks: [{ id: "identity", status: "pending" }] });
+  writeFileSync(join(root, "src/a.ts"), "edited mid-build");
+  const midBuild = runHook("stop", { cwd: root }).reason ?? "";
+  expect(midBuild).toContain("src/a.ts");
+  expect(midBuild).toContain("do not write a hand-off summary");
+  writeRecord();
+  const handoff = runHook("stop", { cwd: root }).reason ?? "";
+  expect(handoff).toContain("normal hand-off summary");
+});
