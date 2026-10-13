@@ -25,7 +25,8 @@ Whenever the account tools are missing, the response names the exact login step 
 | Situation | Do |
 |---|---|
 | Account MCP not registered, not logged in, or unreachable | Do the code study anyway and show the findings, saved in `nozle-study.yaml`; then say so, give the login command for this host, and offer: log in now, docs-and-code only, or stop. After the login, reuse the study (`nozle-check study`) and read the account. Never present documentation as this account's configuration. |
-| Organization not onboarded (the login ends with `onboarding_incomplete`) | The consent page already sent the user to onboarding. Say the account is not onboarded and stop: no menu, plan or edits. When the user says onboarding is done, start the login again. |
+| Organization not onboarded (the login ends with `onboarding_incomplete`) | The user chose Cancel on the consent page, which shows what is missing (a meter, a plan, onboarding). Say the account is not onboarded and stop: no menu, plan or edits. When the user says onboarding is done, start the login again. |
+| The login timed out while the user was onboarding | Agents wait only about 5 minutes for the approval (Claude Code's limit is fixed), and onboarding usually takes longer. Say so, and start the login again once the user has finished onboarding: it is a one-click approval because they are already signed in. |
 | Several organizations | Ask which one; record its ID. |
 | Permission denied for a family | Record the family as `unavailable` with the reason; continue with the rest. |
 
