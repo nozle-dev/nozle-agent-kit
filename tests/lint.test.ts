@@ -67,3 +67,12 @@ describe("lintSource", () => {
     expect(createsSubscription("nozle.subscriptions.list({ customerId })")).toBe(false);
   });
 });
+
+describe("charge inside a database transaction", () => {
+  test("flags a usage call inside a transaction callback and stays quiet after the commit", () => {
+    const inside = `await sequelize.transaction(async (t) => {\n  await Wallet.decrement('credits', { transaction: t });\n  await nozle.usage.track({ idempotencyKey: unit.key });\n});`;
+    const after = `const unit = await sequelize.transaction(async (t) => { return Unit.create({}, { transaction: t }); });\nawait nozle.usage.track({ idempotencyKey: unit.key });`;
+    expect(lintSource("src/purchase.js", inside).advice.join(" ")).toContain("inside a database transaction");
+    expect(lintSource("src/purchase.js", after).advice.join(" ")).not.toContain("inside a database transaction");
+  });
+});

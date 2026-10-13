@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import YAML from "yaml";
 
@@ -39,7 +39,8 @@ const readOnlyTools = new Set([
 ]);
 const productionHost = /api\.nozle\.app/i;
 // A command word that talks to the network; reading or searching for the host is fine.
-const userRunScript = /nozle-first-event/;
+// Scripts that send real events are run by the user; the agent writes and reads them with its file tools only.
+const userRunScript = /nozle-first-event|nozle-live-check/;
 // The legacy Nozle MCP package is outdated and undocumented; the plugin never installs or runs it.
 const legacyMcpPackage = /@nozle-js\/mcp/;
 const networkClient = /(^|[;&|(\s])(curl|wget|http|xh|nc|ncat|telnet)(\s|$)/;
@@ -50,7 +51,7 @@ const envTemplates = new Set([".env.example", ".env.sample", ".env.template"]);
 
 type ObjectValue = Record<string, unknown>;
 
-const checkSubcommands = new Set(["env", "plan", "progress", "hash", "resume", "check"]);
+const checkSubcommands = new Set(["env", "plan", "progress", "hash", "resume", "check", "key"]);
 
 /**
  * True only for `nozle-check <read-only subcommand> <plain arguments>` (or `node <path>/nozle-check.mjs ...`).
@@ -431,11 +432,80 @@ function stop(root: string, input: HookInput): HookResult {
     : allow();
 }
 
+/**
+ * Records below `start` (a workspace that keeps one record per service, opened at the workspace root).
+ * shortcut: three levels deep and skipping dependency folders, enough for service folders in a repository.
+ */
+export function nestedIntegrationRoots(start: string, depth = 3): string[] {
+  const found: string[] = [];
+  const skip = new Set(["node_modules", ".git", ".venv", "venv", "dist", "build", ".next", "vendor", "target"]);
+  const walk = (dir: string, level: number) => {
+    if (level > depth) return;
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    if (level > 0 && (entries.includes(recordName) || entries.includes(setupName))) {
+      found.push(dir);
+      return;
+    }
+    for (const entry of entries) {
+      if (skip.has(entry) || entry.startsWith(".")) continue;
+      const path = join(dir, entry);
+      try {
+        if (statSync(path).isDirectory()) walk(path, level + 1);
+      } catch {
+        // unreadable entries are skipped
+      }
+    }
+  };
+  walk(resolve(start), 0);
+  return found;
+}
+
+/** The record that owns a path: the nearest one above the file itself, else the one above the working directory. */
+const rootFor = (cwd: string | undefined, target: string, fallback: string | undefined): string | undefined =>
+  findIntegrationRoot(dirname(resolve(cwd ?? ".", target))) ?? fallback;
+
+function combine(results: HookResult[]): HookResult {
+  const denied = results.filter((result) => result.decision === "deny");
+  if (denied.length) return deny(denied.map((result) => result.reason).join(" "));
+  const context = results.map((result) => result.context).filter(Boolean).join(" ");
+  return allow(context || undefined);
+}
+
 export function runHook(event: string, input: HookInput): HookResult {
   if (!(hookEvents as readonly string[]).includes(event)) throw new Error(`unknown hook event ${event}`);
   if (event === "permission") return isReadOnlyCheckCommand(input.command ?? "") ? allow() : { decision: "allow", abstain: true };
-  const root = findIntegrationRoot(input.cwd ?? ".");
-  if (!root) return allow();
+  const cwdRoot = findIntegrationRoot(input.cwd ?? ".");
+
+  // Each edited file is judged by its own service's record, even when the session runs at the workspace root.
+  if (event === "pre-edit" || event === "post-edit") {
+    const targets = editTargets(input);
+    if (targets.length === 0) return cwdRoot ? preEdit(cwdRoot, input) : allow();
+    return combine(targets.map((target) => {
+      const root = rootFor(input.cwd, target, cwdRoot);
+      if (!root) return allow();
+      const single = { ...input, path: target, paths: undefined };
+      return event === "pre-edit" ? preEdit(root, single) : postEdit(root, single);
+    }));
+  }
+  if (event === "pre-command" && !cwdRoot) {
+    const roots = [...new Set(shellWriteTargets(input.command ?? "").map((target) => rootFor(input.cwd, target, undefined)).filter((root): root is string => !!root))];
+    return combine(roots.map((root) => runRooted(event, root, input)));
+  }
+  if (!cwdRoot) {
+    if (event === "session-start" || event === "stop") {
+      return combine(nestedIntegrationRoots(input.cwd ?? ".").map((root) => runRooted(event, root, input)));
+    }
+    return allow();
+  }
+  return runRooted(event, cwdRoot, input);
+}
+
+function runRooted(event: string, root: string, input: HookInput): HookResult {
 
   switch (event) {
     case "session-start":

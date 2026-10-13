@@ -1,14 +1,21 @@
 #!/usr/bin/env sh
-# Runs the Nozle guards only while an integration record exists above the working directory, so a
-# missing or broken `node` can never block work in projects that are not integrating Nozle.
+# Runs the Nozle guards only while an integration record exists above the working directory, or one to
+# three folders below it (a workspace that keeps one record per service), so a missing or broken `node`
+# can never block work in projects that are not integrating Nozle.
 # Shell builtins only: this check must work even when nothing else is on PATH.
+run() { exec node "${0%/*}/nozle-check.mjs" hook "$@"; }
 dir=$(pwd)
 while :; do
   if [ -e "$dir/nozle.integration.yaml" ] || [ -e "$dir/nozle-setup-plan.yaml" ]; then
-    exec node "${0%/*}/nozle-check.mjs" hook "$@"
+    run "$@"
   fi
   parent=${dir%/*}
   [ -z "$parent" ] && parent=/
-  [ "$parent" = "$dir" ] && exit 0
+  [ "$parent" = "$dir" ] && break
   dir=$parent
 done
+here=$(pwd)
+for record in "$here"/*/nozle.integration.yaml "$here"/*/*/nozle.integration.yaml "$here"/*/*/*/nozle.integration.yaml; do
+  [ -e "$record" ] && run "$@"
+done
+exit 0

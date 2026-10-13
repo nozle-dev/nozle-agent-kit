@@ -138,6 +138,8 @@ describe("command, MCP, and secret guards", () => {
       "node skills/nozle-integrate/scripts/nozle-first-event.mjs --customer c --event e --subscription s --yes",
       "./nozle-first-event.mjs --customer c --event e --subscription s",
       "NOZLE_SECRET_KEY=$KEY bash -c 'node nozle-first-event.mjs --yes'",
+      "node scripts/nozle-live-check.mjs --org org_test",
+      "npx tsx scripts/nozle-live-check.ts --org o",
     ]) {
       const result = runHook("pre-command", { cwd: root, command });
       expect(result.decision).toBe("deny");
@@ -442,4 +444,29 @@ test("stop asks for a hand-off summary only when the record is at hand-off", () 
 test("stop refuses a draft whose goals were not answered by the user", () => {
   writeFileSync(join(root, "nozle.integration.yaml"), YAML.stringify({ schema: "nozle.integration", version: 1, selected_goals: [10], peers: [] }));
   expect(runHook("stop", { cwd: root }).reason).toContain('decisions entry with id "goals"');
+});
+
+describe("records kept per service", () => {
+  let workspace: string;
+  beforeEach(() => {
+    workspace = mkdtempSync(join(tmpdir(), "nozle-workspace-"));
+    mkdirSync(join(workspace, "backend", "src"), { recursive: true });
+    writeFileSync(join(workspace, "backend", "nozle.integration.yaml"), YAML.stringify({
+      schema: "nozle.integration", version: 1, selected_goals: [5], peers: [],
+      approved_scope: { approved_at: "2026-10-10T10:00:00Z", included_paths: ["src/billing.ts"], billing_rules: ["bill once"] },
+    }));
+  });
+  afterEach(() => rmSync(workspace, { recursive: true, force: true }));
+
+  test("a session at the workspace root is still held to the service's approved scope", () => {
+    expect(runHook("pre-edit", { cwd: workspace, path: "backend/src/billing.ts" }).decision).toBe("allow");
+    const outside = runHook("pre-edit", { cwd: workspace, path: "backend/src/other.ts" });
+    expect(outside.decision).toBe("deny");
+    expect(outside.reason).toContain("outside the approved");
+    expect(runHook("pre-command", { cwd: workspace, command: "echo x > backend/src/other.ts" }).decision).toBe("deny");
+  });
+
+  test("session start finds the service records below the workspace root", () => {
+    expect(runHook("session-start", { cwd: workspace }).context).toContain("Nozle integration in progress");
+  });
 });

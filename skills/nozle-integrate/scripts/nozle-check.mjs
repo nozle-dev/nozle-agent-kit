@@ -6955,8 +6955,8 @@ var require_public_api = __commonJS(function(exports) {
 });
 
 // src/check.ts
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, statSync as statSync2, writeFileSync } from "node:fs";
-import { basename as basename2, dirname as dirname2, join as join2, resolve as resolve2 } from "node:path";
+import { appendFileSync, existsSync as existsSync3, mkdirSync, readdirSync as readdirSync2, readFileSync as readFileSync3, statSync as statSync2, writeFileSync } from "node:fs";
+import { basename as basename2, dirname as dirname2, join as join3, resolve as resolve2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/yaml/dist/index.js
@@ -7365,6 +7365,96 @@ function renderUsageScan(scan, packages) {
 `;
 }
 
+// src/key.ts
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+var defaultNames = ["NOZLE_SECRET_KEY", "NOZLE_PUBLISHABLE_KEY", "NOZLE_API_KEY"];
+var envFiles = [".env.local", ".env"];
+function parseDotenv(text) {
+  const out = {};
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+    if (!match)
+      continue;
+    let value = match[2];
+    if (/^(["']).*\1$/.test(value))
+      value = value.slice(1, -1);
+    else
+      value = value.replace(/\s+#.*$/, "");
+    out[match[1]] = value;
+  }
+  return out;
+}
+function keyNames(directory) {
+  const names = new Set(defaultNames);
+  const template = join(directory, ".env.example");
+  if (existsSync(template)) {
+    for (const name of Object.keys(parseDotenv(readFileSync(template, "utf8")))) {
+      if (/^(?:[A-Z0-9_]*_)?NOZLE_[A-Z0-9_]*KEY$/.test(name))
+        names.add(name);
+    }
+  }
+  return [...names];
+}
+function findKeys(directory, env = process.env) {
+  const files = envFiles.filter((file) => existsSync(join(directory, file))).map((file) => ({ file, values: parseDotenv(readFileSync(join(directory, file), "utf8")) }));
+  const found = [];
+  for (const name of keyNames(directory)) {
+    if (env[name]) {
+      found.push({ name, source: "environment", value: env[name] });
+      continue;
+    }
+    const hit = files.find(({ values }) => values[name]);
+    if (hit)
+      found.push({ name, source: hit.file, value: hit.values[name] });
+  }
+  return found;
+}
+function kindOf(value) {
+  if (value.startsWith("sk_"))
+    return "secret";
+  if (value.startsWith("pk_"))
+    return "publishable";
+  return "unknown";
+}
+function describeStatus(status) {
+  if (status >= 200 && status < 300)
+    return { ok: true, message: `works (HTTP ${status})` };
+  if (status === 401)
+    return { ok: false, message: "rejected (HTTP 401): the key is wrong, revoked, or for another environment" };
+  if (status === 403)
+    return { ok: true, message: "accepted, but not allowed to read plans (HTTP 403): check its permissions in Settings > API Keys" };
+  if (status === 429)
+    return { ok: false, message: "not checked: rate limited (HTTP 429), try again shortly" };
+  return { ok: false, message: `not checked: Nozle answered HTTP ${status}` };
+}
+async function checkKeys(directory, base, request = fetch) {
+  const url = `${base.replace(/\/+$/, "")}/api/v1/plans?per_page=1`;
+  const results = [];
+  for (const key of findKeys(directory)) {
+    const kind = kindOf(key.value);
+    if (kind === "unknown") {
+      results.push({ name: key.name, source: key.source, kind, ok: false, message: "is not a Nozle key (it should start with sk_ or pk_)" });
+      continue;
+    }
+    try {
+      const response = await request(url, { headers: { Authorization: `Bearer ${key.value}` } });
+      results.push({ name: key.name, source: key.source, kind, ...describeStatus(response.status) });
+    } catch {
+      results.push({ name: key.name, source: key.source, kind, ok: false, message: `not checked: could not reach ${base}` });
+    }
+  }
+  return results;
+}
+function renderKeyResults(results) {
+  if (results.length === 0) {
+    return `no Nozle key found: set NOZLE_SECRET_KEY (and NOZLE_PUBLISHABLE_KEY if the browser shows pricing) in .env or the environment
+`;
+  }
+  return results.map((r) => `${r.name} (${r.kind} key, from ${r.source}): ${r.message}
+`).join("");
+}
+
 // src/hook-adapters.ts
 var none = { stdout: "", stderr: "", exitCode: 0 };
 var object = (value) => value !== null && typeof value === "object" ? value : {};
@@ -7642,6 +7732,7 @@ var adapters = { claude, codex, cursor, windsurf, gemini, copilot, opencode };
 // src/hosts.ts
 var hostNames = ["codex", "cursor", "windsurf", "gemini", "copilot", "opencode"];
 var docsUrl = "https://docs.nozle.dev/mcp";
+var accountUrl = process.env.NOZLE_ACCOUNT_MCP_URL || "https://api.nozle.app/core/mcp";
 var pretty = (value) => `${JSON.stringify(value, null, 2)}
 `;
 var hostNotes = {
@@ -7706,7 +7797,10 @@ function hostFiles(host, hookPath) {
       ];
     case "opencode":
       return [
-        { path: "opencode.json", content: pretty({ $schema: "https://opencode.ai/config.json", mcp: { "nozle-docs": { type: "remote", url: docsUrl, enabled: true } } }) },
+        { path: "opencode.json", content: pretty({ $schema: "https://opencode.ai/config.json", mcp: {
+          "nozle-docs": { type: "remote", url: docsUrl, enabled: true },
+          "nozle-account": { type: "remote", url: accountUrl, enabled: true }
+        } }) },
         { path: ".opencode/plugins/nozle-guard.js", content: opencodePlugin(hookPath) }
       ];
   }
@@ -7734,8 +7828,8 @@ export const NozleGuard = async ({ directory }) => ({
 
 // src/hook.ts
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync as existsSync2, readdirSync, readFileSync as readFileSync2, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join as join2, relative, resolve } from "node:path";
 
 // src/plan.ts
 function mergeTasks(tasks) {
@@ -7865,6 +7959,26 @@ var usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\/api\/v1\/(?:events|us
 var mentionsNozle = /nozle/i;
 var conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409/;
 var builtSubscriptionId = /\b(?:subscriptionId|subscription_id|external_subscription_id|SubscriptionID)\b["']?\s*[:=]\s*(?:`[A-Za-z][^`$\n]*\$\{|f["'][A-Za-z][^"'{\n]*\{|["'][A-Za-z][^"'\n]*["']\s*\+)/;
+var transactionOpen = /\.(?:\$)?transaction\(\s*(?:async\s*)?(?:\(?[\w,\s]*\)?)\s*=>\s*\{|\.(?:\$)?transaction\(\s*async\s+function\s*\([^)]*\)\s*\{/g;
+function chargesInsideTransaction(text) {
+  for (const match of text.matchAll(transactionOpen)) {
+    let depth = 0;
+    const start = (match.index ?? 0) + match[0].length - 1;
+    for (let i = start;i < text.length; i += 1) {
+      if (text[i] === "{")
+        depth += 1;
+      else if (text[i] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          if (usageCall.test(text.slice(start, i)))
+            return true;
+          break;
+        }
+      }
+    }
+  }
+  return false;
+}
 var clientAbortToProvider = /\bsignal\s*:\s*(?:request|req|event\.request|c\.req\.raw|ctx\.request)\.signal\b/;
 var subscriptionCreate = /\bsubscriptions\.create\(|\bcreateSubscription\(|\bSubscriptions\.Create\(|["'`][^"'`\n]*\/subscriptions["'`]\s*,\s*\{[^\n]*method:\s*["']POST/;
 var manifest = /(?:^|\/)(?:package(?:-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|Pipfile(?:\.lock)?|go\.(?:mod|sum))$/;
@@ -7914,6 +8028,9 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
   if (clientAbortToProvider.test(text)) {
     advice.push(`${path}: passes the client's abort signal to the provider call, so a disconnect cancels the provider and the usage is never billed; keep reading to the final usage, then bill`);
   }
+  if (!testFile.test(path) && chargesInsideTransaction(text)) {
+    advice.push(`${path}: calls Nozle inside a database transaction; charge after the commit, keyed by the committed record, so a rollback can't leave a charge behind`);
+  }
   return notes.length ? { advice, notes } : { advice };
 }
 function handlesConflict(text) {
@@ -7941,7 +8058,32 @@ var reviewChecks = [
   "legacy-balance",
   "migration",
   "secret-key",
-  "scope-changes"
+  "scope-changes",
+  "ledger-once",
+  "pending-owner",
+  "charge-in-transaction",
+  "key-provenance",
+  "check-quantity",
+  "off-mode",
+  "renewal",
+  "identity-lookup",
+  "legacy-gates",
+  "nullable-fields",
+  "one-clock",
+  "denial-retry",
+  "claim-after-fulfil",
+  "status-reader",
+  "codes-exist",
+  "lint-clean",
+  "charge-parity",
+  "shadow-seed",
+  "dedupe-scope",
+  "route-coverage",
+  "seed-before-read",
+  "next-period",
+  "cost-event-id",
+  "denial-after-work",
+  "limit-source"
 ];
 var reviewResults = new Set(["pass", "fail", "not_applicable"]);
 var setupStatuses = new Set(["manual_pending", "code_written", "code_verified", "awaiting_activation", "live_observed"]);
@@ -8254,13 +8396,13 @@ var readOnlyTools = new Set([
   "get_capability_catalog"
 ]);
 var productionHost = /api\.nozle\.app/i;
-var userRunScript = /nozle-first-event/;
+var userRunScript = /nozle-first-event|nozle-live-check/;
 var legacyMcpPackage = /@nozle-js\/mcp/;
 var networkClient = /(^|[;&|(\s])(curl|wget|http|xh|nc|ncat|telnet)(\s|$)/;
 var maxScanBytes = 1e6;
 var envFile = /^\.env(\..+)?$/;
 var envTemplates = new Set([".env.example", ".env.sample", ".env.template"]);
-var checkSubcommands = new Set(["env", "plan", "progress", "hash", "resume", "check"]);
+var checkSubcommands = new Set(["env", "plan", "progress", "hash", "resume", "check", "key"]);
 function isReadOnlyCheckCommand(command) {
   if (!/^[A-Za-z0-9_.\/@:=+,~ -]+$/.test(command))
     return false;
@@ -8288,7 +8430,7 @@ function realpathLoose(path) {
     return realpathSync(path);
   } catch {
     const parent = dirname(path);
-    return parent === path ? path : join(realpathLoose(parent), basename(path));
+    return parent === path ? path : join2(realpathLoose(parent), basename(path));
   }
 }
 function repositoryRelative(root, path) {
@@ -8296,12 +8438,12 @@ function repositoryRelative(root, path) {
   return rel === "" || rel.startsWith("..") || isAbsolute(rel) ? undefined : rel;
 }
 function sha256(path) {
-  return existsSync(path) ? createHash("sha256").update(readFileSync(path)).digest("hex") : "absent";
+  return existsSync2(path) ? createHash("sha256").update(readFileSync2(path)).digest("hex") : "absent";
 }
 function findIntegrationRoot(start) {
   let dir = resolve(start);
   for (let depth = 0;depth < 25; depth += 1) {
-    if (existsSync(join(dir, recordName)) || existsSync(join(dir, setupName)))
+    if (existsSync2(join2(dir, recordName)) || existsSync2(join2(dir, setupName)))
       return dir;
     const parent = dirname(dir);
     if (parent === dir)
@@ -8311,11 +8453,11 @@ function findIntegrationRoot(start) {
   return;
 }
 function loadRecord(root) {
-  const file = join(root, recordName);
-  if (!existsSync(file))
+  const file = join2(root, recordName);
+  if (!existsSync2(file))
     return {};
   try {
-    const value = exports_dist.parse(readFileSync(file, "utf8"), { uniqueKeys: true });
+    const value = exports_dist.parse(readFileSync2(file, "utf8"), { uniqueKeys: true });
     return value !== null && typeof value === "object" && !Array.isArray(value) ? { record: value } : { error: `${recordName} must be an object` };
   } catch (error) {
     return { error: `${recordName}: ${yamlProblem(error)}` };
@@ -8397,12 +8539,12 @@ var underPath = (rel, entry) => {
   return rel === base || rel.startsWith(`${base}/`);
 };
 function unansweredActivities(root, record) {
-  const file = join(root, "nozle-study.yaml");
-  if (!record || !existsSync(file))
+  const file = join2(root, "nozle-study.yaml");
+  if (!record || !existsSync2(file))
     return [];
   let study;
   try {
-    study = exports_dist.parse(readFileSync(file, "utf8"));
+    study = exports_dist.parse(readFileSync2(file, "utf8"));
   } catch {
     return [];
   }
@@ -8470,7 +8612,7 @@ function preEdit(root, input) {
 }
 var isRecordFile = (root, cwd, target) => artifacts.has(repositoryRelative(root, resolve(cwd ?? root, target)) ?? "");
 function readSmall(file) {
-  return existsSync(file) && statSync(file).isFile() && statSync(file).size <= maxScanBytes ? readFileSync(file, "utf8") : undefined;
+  return existsSync2(file) && statSync(file).isFile() && statSync(file).size <= maxScanBytes ? readFileSync2(file, "utf8") : undefined;
 }
 var backendPathOf = (record) => String(record?.stack?.backend_path ?? "") || undefined;
 function postEdit(root, input) {
@@ -8540,7 +8682,7 @@ function peerFindings(root, record) {
       return [];
     return [`${recordName} has no peers entry. If the user named another repository of this product (a backend or frontend), record it in peers with its location; otherwise write peers: [].`];
   }
-  return peerRoots(root, record).filter((dir) => existsSync(join(dir, recordName))).filter((dir) => record.peers.some((peer) => resolve(root, String(peer?.location)) === dir && peer?.record_seen !== true)).map((dir) => `The peer at ${dir} has a ${recordName}: read it, reuse its decisions and interfaces, and set record_seen: true.`);
+  return peerRoots(root, record).filter((dir) => existsSync2(join2(dir, recordName))).filter((dir) => record.peers.some((peer) => resolve(root, String(peer?.location)) === dir && peer?.record_seen !== true)).map((dir) => `The peer at ${dir} has a ${recordName}: read it, reuse its decisions and interfaces, and set record_seen: true.`);
 }
 function stop(root, input) {
   if (input.stop_hook_active)
@@ -8557,7 +8699,7 @@ function stop(root, input) {
   if (stoppedOnPurpose)
     return allow();
   const findings = peerFindings(root, record);
-  const drifted = record.source_files.filter((file) => sha256(join(root, String(file.path))) !== file.sha256).map((file) => String(file.path));
+  const drifted = record.source_files.filter((file) => sha256(join2(root, String(file.path))) !== file.sha256).map((file) => String(file.path));
   if (drifted.length) {
     findings.push(`Scoped files changed since the record was last updated: ${drifted.join(", ")}. Run the step's tests, then update task evidence and source_files hashes in ${recordName}.`);
   }
@@ -8566,10 +8708,10 @@ function stop(root, input) {
     const recordErrors = validateIntegrationRecord(record, { requireReview: handoff });
     if (recordErrors.length)
       findings.push(`${recordName} does not validate: ${recordErrors.join("; ")}.`);
-    const setup = join(root, setupName);
-    if (existsSync(setup)) {
+    const setup = join2(root, setupName);
+    if (existsSync2(setup)) {
       try {
-        const setupErrors = validateSetupPlan(exports_dist.parse(readFileSync(setup, "utf8")));
+        const setupErrors = validateSetupPlan(exports_dist.parse(readFileSync2(setup, "utf8")));
         if (setupErrors.length)
           findings.push(`${setupName} does not validate: ${setupErrors.join("; ")}.`);
       } catch (error) {
@@ -8583,7 +8725,7 @@ function stop(root, input) {
     findings.push(`self_review marks ${failed.join(", ")} as fail; fix each one, or ask the user before handing off with it.`);
   }
   const creators = [];
-  const scoped = (handoff ? record.source_files : []).map((file) => String(file.path)).filter((path) => !artifacts.has(path)).map((path) => ({ path, text: readSmall(join(root, path)) })).filter((file) => file.text !== undefined);
+  const scoped = (handoff ? record.source_files : []).map((file) => String(file.path)).filter((path) => !artifacts.has(path)).map((path) => ({ path, text: readSmall(join2(root, path)) })).filter((file) => file.text !== undefined);
   const conflictHandled = scoped.some((file) => handlesConflict(file.text));
   for (const { path, text } of scoped) {
     const lint = lintSource(path, text, backendPathOf(record), { conflictHandled });
@@ -8598,14 +8740,74 @@ function stop(root, input) {
   }
   return findings.length ? deny(`${findings.join(" ")} Fix each one in the code when this session's task includes editing; when it does not (status, audit, verify without approval), list them for the user as open findings instead. Write an exception in nozle-integration-report.md only when the fix is impossible (for example no stored or request id identifies the unit), and never argue with this check in your reply. ${handoff ? "Then end with your normal hand-off summary for the user: what was built, what changed from the approved scope, what is unverified, and the dashboard steps." : "Then finish this step's reply as usual (the choices, the scope for approval, or the build progress) with these items as one short list; the build is not finished, so do not write a hand-off summary."}`) : allow();
 }
+function nestedIntegrationRoots(start, depth = 3) {
+  const found = [];
+  const skip = new Set(["node_modules", ".git", ".venv", "venv", "dist", "build", ".next", "vendor", "target"]);
+  const walk = (dir, level) => {
+    if (level > depth)
+      return;
+    let entries;
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    if (level > 0 && (entries.includes(recordName) || entries.includes(setupName))) {
+      found.push(dir);
+      return;
+    }
+    for (const entry of entries) {
+      if (skip.has(entry) || entry.startsWith("."))
+        continue;
+      const path = join2(dir, entry);
+      try {
+        if (statSync(path).isDirectory())
+          walk(path, level + 1);
+      } catch {}
+    }
+  };
+  walk(resolve(start), 0);
+  return found;
+}
+var rootFor = (cwd, target, fallback) => findIntegrationRoot(dirname(resolve(cwd ?? ".", target))) ?? fallback;
+function combine(results) {
+  const denied = results.filter((result) => result.decision === "deny");
+  if (denied.length)
+    return deny(denied.map((result) => result.reason).join(" "));
+  const context = results.map((result) => result.context).filter(Boolean).join(" ");
+  return allow(context || undefined);
+}
 function runHook(event, input) {
   if (!hookEvents.includes(event))
     throw new Error(`unknown hook event ${event}`);
   if (event === "permission")
     return isReadOnlyCheckCommand(input.command ?? "") ? allow() : { decision: "allow", abstain: true };
-  const root = findIntegrationRoot(input.cwd ?? ".");
-  if (!root)
+  const cwdRoot = findIntegrationRoot(input.cwd ?? ".");
+  if (event === "pre-edit" || event === "post-edit") {
+    const targets = editTargets(input);
+    if (targets.length === 0)
+      return cwdRoot ? preEdit(cwdRoot, input) : allow();
+    return combine(targets.map((target) => {
+      const root = rootFor(input.cwd, target, cwdRoot);
+      if (!root)
+        return allow();
+      const single = { ...input, path: target, paths: undefined };
+      return event === "pre-edit" ? preEdit(root, single) : postEdit(root, single);
+    }));
+  }
+  if (event === "pre-command" && !cwdRoot) {
+    const roots = [...new Set(shellWriteTargets(input.command ?? "").map((target) => rootFor(input.cwd, target, undefined)).filter((root) => !!root))];
+    return combine(roots.map((root) => runRooted(event, root, input)));
+  }
+  if (!cwdRoot) {
+    if (event === "session-start" || event === "stop") {
+      return combine(nestedIntegrationRoots(input.cwd ?? ".").map((root) => runRooted(event, root, input)));
+    }
     return allow();
+  }
+  return runRooted(event, cwdRoot, input);
+}
+function runRooted(event, root, input) {
   switch (event) {
     case "session-start":
       return sessionContext(root);
@@ -8721,14 +8923,14 @@ var SKIP = new Set(["node_modules", ".git", ".venv", "venv", "dist", "build", ".
 function collectManifests(root) {
   const files = {};
   const walk = (current, depth, rel) => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const path = join2(current, entry.name);
+    for (const entry of readdirSync2(current, { withFileTypes: true })) {
+      const path = join3(current, entry.name);
       const relative = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (depth < 2 && !SKIP.has(entry.name) && !entry.name.startsWith("."))
           walk(path, depth + 1, relative);
       } else if (MANIFESTS.has(entry.name) || CONFIGS.test(entry.name) || PY_ENTRIES.has(entry.name)) {
-        files[relative] = statSync2(path).size <= 5000000 ? readFileSync2(path, "utf8") : "";
+        files[relative] = statSync2(path).size <= 5000000 ? readFileSync3(path, "utf8") : "";
       }
     }
   };
@@ -8738,14 +8940,14 @@ function collectManifests(root) {
 function collectSources(root) {
   const files = {};
   const walk = (current, depth, rel) => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const path = join2(current, entry.name);
+    for (const entry of readdirSync2(current, { withFileTypes: true })) {
+      const path = join3(current, entry.name);
       const relative = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (depth < 6 && !SKIP.has(entry.name) && !entry.name.startsWith("."))
           walk(path, depth + 1, relative);
       } else if (SOURCE_EXT.test(entry.name) && statSync2(path).size <= 400000) {
-        files[relative] = readFileSync2(path, "utf8");
+        files[relative] = readFileSync3(path, "utf8");
       }
     }
   };
@@ -8810,7 +9012,7 @@ function resumeDocument(recordSource, root, configSource) {
   const currentFiles = {};
   for (const file of Array.isArray(record?.source_files) ? record.source_files : []) {
     const rel = typeof file?.path === "string" ? repositoryRelative(root, file.path) : undefined;
-    currentFiles[file?.path] = rel ? sha256(join2(root, rel)) : "outside-repository";
+    currentFiles[file?.path] = rel ? sha256(join3(root, rel)) : "outside-repository";
   }
   return assessResume(record, currentFiles, exports_dist.parse(configSource) ?? {});
 }
@@ -8822,7 +9024,7 @@ function fail(message, code = 1) {
 }
 function readFileOrFail(filename) {
   try {
-    return readFileSync2(filename, "utf8");
+    return readFileSync3(filename, "utf8");
   } catch {
     fail("Could not read artifact", 2);
     return;
@@ -8830,7 +9032,7 @@ function readFileOrFail(filename) {
 }
 function readPayload() {
   try {
-    const raw = readFileSync2(0, "utf8");
+    const raw = readFileSync3(0, "utf8");
     return raw.trim() ? JSON.parse(raw) : {};
   } catch {
     return;
@@ -8888,13 +9090,13 @@ function runHostsCommand(args) {
     return fail(`Usage: nozle-check hosts <${[...hostNames, "cline"].join("|")}> [--write] [directory]`, 2);
   const dirArg = args.filter((arg) => !arg.startsWith("--"))[1];
   const root = resolve2(dirArg ?? ".");
-  const hookPath = join2(dirname2(fileURLToPath(import.meta.url)), "nozle-hook");
+  const hookPath = join3(dirname2(fileURLToPath(import.meta.url)), "nozle-hook");
   for (const file of hostFiles(host, hookPath)) {
-    const target = join2(root, file.path);
+    const target = join3(root, file.path);
     if (!write) {
       console.log(`# ${file.path}
 ${file.content}`);
-    } else if (existsSync2(target)) {
+    } else if (existsSync3(target)) {
       console.log(`skipped ${file.path}: exists, merge this by hand:
 ${file.content}`);
     } else {
@@ -8912,7 +9114,7 @@ function hashDocument(root, paths) {
     const rel = repositoryRelative(root, resolve2(root, path));
     if (!rel)
       throw new Error(`${path} is outside the repository`);
-    return { path: rel, sha256: sha256(join2(root, rel)) };
+    return { path: rel, sha256: sha256(join3(root, rel)) };
   });
   return exports_dist.stringify({ source_files: files });
 }
@@ -8925,7 +9127,7 @@ function main(argv) {
   if (command === "env") {
     const asJson = rest.includes("--json");
     const root = resolve2(rest.find((arg) => !arg.startsWith("--")) ?? ".");
-    if (!existsSync2(root))
+    if (!existsSync3(root))
       return fail(`Usage: nozle-check env [directory] [--json]`, 2);
     const result = detectEnvironment(collectManifests(root));
     process.stdout.write(asJson ? `${JSON.stringify(result, null, 2)}
@@ -8935,12 +9137,24 @@ function main(argv) {
   if (command === "scan") {
     const asJson = rest.includes("--json");
     const root = resolve2(rest.find((arg) => !arg.startsWith("--")) ?? ".");
-    if (!existsSync2(root))
+    if (!existsSync3(root))
       return fail("Usage: nozle-check scan [directory] [--json]", 2);
     const scan = scanNozleUsage(collectSources(root));
     const packages = detectEnvironment(collectManifests(root)).nozlePackages;
     process.stdout.write(asJson ? `${JSON.stringify({ ...scan, packages }, null, 2)}
 ` : renderUsageScan(scan, packages));
+    return;
+  }
+  if (command === "key") {
+    const flag = rest.indexOf("--base");
+    const base = flag === -1 ? "https://api.nozle.app/core" : rest[flag + 1];
+    const root = resolve2(rest.filter((_, i) => flag === -1 || i !== flag && i !== flag + 1)[0] ?? ".");
+    if (!base || !existsSync3(root))
+      return fail("Usage: nozle-check key [directory] [--base <core url>]", 2);
+    checkKeys(root, base).then((results) => {
+      process.stdout.write(renderKeyResults(results));
+      process.exitCode = results.length === 0 ? 2 : results.every((r) => r.ok) ? 0 : 1;
+    });
     return;
   }
   if (command === "study") {
@@ -8956,7 +9170,7 @@ function main(argv) {
     const hashes = {};
     for (const entry of Array.isArray(study.source_files) ? study.source_files : []) {
       const rel = repositoryRelative(dirname2(file), String(entry.path));
-      hashes[String(entry.path)] = rel ? sha256(join2(dirname2(file), rel)) : "outside-repository";
+      hashes[String(entry.path)] = rel ? sha256(join3(dirname2(file), rel)) : "outside-repository";
     }
     const drift = studyDrift(study, hashes);
     process.stdout.write(`account read: ${study.account_read.status}
@@ -9019,6 +9233,7 @@ ${result.drift.map((line) => `- ${line}
        nozle-check hash <repository> <path>...
        nozle-check env [directory] [--json]
        nozle-check scan [directory] [--json]
+       nozle-check key [directory] [--base <core url>]
        nozle-check study [nozle-study.yaml]
        nozle-check hook <event> < payload.json
        nozle-check hook --host <claude|codex|cursor|windsurf|gemini|copilot|opencode> < native-hook-payload.json

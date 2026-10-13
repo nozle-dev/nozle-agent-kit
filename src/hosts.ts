@@ -8,6 +8,8 @@ export interface HostFile {
 }
 
 const docsUrl = "https://docs.nozle.dev/mcp";
+// Self-hosted Core: set NOZLE_ACCOUNT_MCP_URL before running `hosts --write`.
+const accountUrl = process.env.NOZLE_ACCOUNT_MCP_URL || "https://api.nozle.app/core/mcp";
 const pretty = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
 /** Hosts whose MCP or guard setup lives outside the project, so nothing here can write it. */
@@ -75,7 +77,11 @@ export function hostFiles(host: HostName, hookPath: string): HostFile[] {
       ];
     case "opencode":
       return [
-        { path: "opencode.json", content: pretty({ $schema: "https://opencode.ai/config.json", mcp: { "nozle-docs": { type: "remote", url: docsUrl, enabled: true } } }) },
+        { path: "opencode.json", content: pretty({ $schema: "https://opencode.ai/config.json", mcp: {
+          "nozle-docs": { type: "remote", url: docsUrl, enabled: true },
+          // OAuth: log in once with `opencode mcp auth nozle-account`.
+          "nozle-account": { type: "remote", url: accountUrl, enabled: true },
+        } }) },
         { path: ".opencode/plugins/nozle-guard.js", content: opencodePlugin(hookPath) },
       ];
   }

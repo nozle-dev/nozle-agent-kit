@@ -39,6 +39,6 @@ Call the account tools in this order and check status and completeness for every
 3. `list_integration_resources` and `get_integration_resource`: only for the resources the selected goals need.
 4. `get_capability_catalog`: the ten capabilities evaluated for this organization.
 
-A family is `complete`, `missing`, `incomplete`, `unavailable`, or `unsupported`. Never fill a gap from memory or docs. If several offerings could apply, ask which one. Summarize the real plans, meters, entitlements, credits, Cost Sheets (API name: cost models), margin policies, payment connection, and webhook metadata before recommending anything.
+A family is `complete`, `missing`, `incomplete`, `unavailable`, or `unsupported`. Never fill a gap from memory or docs. If several offerings could apply, ask which one. Summarize the real plans, meters, entitlements, credits, Cost Sheets (API name: cost models), margin policies, payment connection, and webhook metadata before recommending anything. Plan entitlements are listed under each plan in the `plans` family; an empty `entitlements` family does not mean the plans include no features, so read the plans before saying so.
 
 Plugin tools are read-only. Never call a Nozle tool that creates, updates, or deletes anything, and never send billable or production test events.

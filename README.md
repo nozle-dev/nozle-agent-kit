@@ -2,10 +2,22 @@
 
 Skills, guard hooks and a small checker (`nozle-check`) that let a coding agent integrate Nozle billing into your application the careful way. It checks your stack, reads your real Nozle account, studies your code, asks only what is still open (with a recommendation first), shows a plan, waits for your approval, and then edits only what you approved.
 
-Supported hosts: **Claude Code** and **Codex CLI**. Other hosts can use the skills and guards (see "Other hosts"), with less support.
+Supported hosts: **Claude Code**, **Codex CLI** and **OpenCode**. Other hosts (Cursor, Windsurf, Gemini CLI, VS Code Copilot) can use the skills and guards, with less support.
 
-- **What it does:** inspects your code and your Nozle configuration, asks focused billing questions, implements the approved integration, and verifies it with your tests.
-- **What it never does:** change your Nozle account, create or read an API key, install packages, run your app, or send a billable event. The account connection is OAuth and read-only. You create plans, meters and credit systems in the dashboard; the agent tells you which ones, and why.
+## Quick start
+
+1. **Install** (once): see [Install](#install) for your host. For Claude Code:
+   ```sh
+   claude plugin marketplace add nozle-dev/nozle-agent-kit
+   claude plugin install nozle-agent-kit@nozle
+   ```
+2. **Open your app's repository,** on a clean git branch, and start the agent there.
+3. **Say "integrate Nozle".** The agent checks your stack and asks you to log in to Nozle once (browser, then Allow). It studies your code and shows the choices that fit, with a recommendation first.
+4. **Answer its questions, read the scope and approve it.** It edits only the files you approved.
+5. **Do the dashboard steps it lists:** create your API keys and put them in your `.env`, plus anything your account is missing. Then ask it to run `nozle-verify`.
+
+- **What it does:** inspects your code and your Nozle configuration, asks focused billing questions, implements the approved integration, installs the packages it needs with your package manager (you approve the command), and verifies it with your tests.
+- **What it never does:** change your Nozle account, create an API key or see its value, install a package the approved scope does not list, run your app, or send a billable event. The account connection is OAuth and read-only. You create plans, meters and credit systems in the dashboard; the agent tells you which ones, and why.
 
 ## The skills at a glance
 
@@ -15,7 +27,7 @@ Supported hosts: **Claude Code** and **Codex CLI**. Other hosts can use the skil
 | Add one capability (credits, checkout, limits, ...) | `nozle-add credits` | Same chain, menu skipped, only the open questions asked |
 | See where things stand | `nozle-status` | Four groups: Implemented, Verified, Pending, Not done |
 | Pick the work back up after a break or a change | `nozle-resume` | Re-reads the account and code, shows drift, continues with the next step |
-| Run the tests the integration wrote | `nozle-verify` | You approve each command; it runs without Nozle keys and records pass or fail |
+| Run the tests the integration wrote | `nozle-verify` | You approve each command (tests, lint, type check); it runs without Nozle keys and records pass or fail. It can also write a live check you run against a test organization |
 | Look for opportunities and gaps | `nozle-audit` | Read-only: no edits |
 | Check an existing integration for mistakes | `nozle-doctor` | Pass, fail or unverified for each known trap, with file and line |
 | Connect the account and finish dashboard setup | `nozle-setup` | Connects, reads, and lists the dashboard steps for you |
@@ -27,15 +39,15 @@ In Claude Code the skills are `/nozle-agent-kit:<name>`. In Codex, name the skil
 
 | You need | Why |
 |---|---|
-| Claude Code or Codex CLI | The agent that runs the skills. |
+| Claude Code, Codex CLI or OpenCode | The agent that runs the skills. |
 | Node.js 18 or newer on `PATH` | `nozle-check` and the guard hooks are Node scripts. |
 | Your application in a git repository, on a clean branch | The guards, `nozle-undo` and the hand-off rely on git; `git diff` then shows exactly what the agent did. |
 | A Nozle organization at [app.nozle.dev](https://app.nozle.dev), onboarded (at least one meter and one plan) | The agent reads it during the run. An organization that is not onboarded cannot connect an agent. |
-| Access to the repository `nozle-dev/nozle-agent-kit` | The install commands below fetch it with your git credentials. |
+| Internet access to GitHub | The install commands fetch the public repository `nozle-dev/nozle-agent-kit`. |
 
 ### Your part: keys and dashboard items
 
-- **API keys:** in the dashboard, open **Settings > API Keys**. Create a secret key (`sk_`, server only) and, if you show pricing in the browser, a publishable key (`pk_`). Put them in your own `.env` (for example `NOZLE_SECRET_KEY=sk_...`). The agent writes only the variable names to `.env.example`. It never creates, asks for or reads a key, and the guards refuse edits to real `.env` files.
+- **API keys:** in the dashboard, open **Settings > API Keys**. Create a secret key (`sk_`, server only) and, if you show pricing in the browser, a publishable key (`pk_`). Put them in your own `.env` (for example `NOZLE_SECRET_KEY=sk_...`). The agent writes only the variable names to `.env.example`. It never creates or asks for a key, and the guards refuse edits to real `.env` files. To check that your keys work, the agent runs `nozle-check key`: it reads them itself, asks Nozle's plan catalog (nothing billable), and prints only whether each key works, never its value.
 - **Dashboard items:** the agent lists what your account is missing for the goals you pick (a meter, a credit system, a Cost Sheet, a webhook endpoint) and saves the list in `nozle-setup-plan.yaml`. You create them; the agent re-reads the account and continues.
 
 ## Install
@@ -60,10 +72,10 @@ This installs the skills and registers both MCP servers (`codex mcp list` shows 
 
 ```sh
 cd my-app
-node ~/.codex/plugins/cache/nozle/nozle-agent-kit/1.0.0/skills/nozle-integrate/scripts/nozle-check.mjs hosts codex --write
+node "$(ls -d "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/nozle/nozle-agent-kit/*/ | sort -V | tail -1)skills/nozle-integrate/scripts/nozle-check.mjs" hosts codex --write
 ```
 
-That writes `.codex/hooks.json` pointing at the installed guard. Codex runs a project's hooks only when the folder is trusted: accept the trust prompt the first time you start Codex there, and approve the hooks with `/hooks`. After a plugin update, run the command again with the new version folder.
+The command picks the newest installed version of the kit and writes `.codex/hooks.json` pointing at its guard. Codex runs a project's hooks only when the folder is trusted: accept the trust prompt the first time you start Codex there, and approve the hooks with `/hooks`. After a plugin update, run the same command again.
 
 Start Codex with the question picker turned on (it is off by default; without it the questions come as a numbered list):
 
@@ -71,9 +83,26 @@ Start Codex with the question picker turned on (it is off by default; without it
 codex --enable default_mode_request_user_input
 ```
 
+### OpenCode
+
+Tested on OpenCode 1.18. Run in your application folder:
+
+```sh
+npx skills add nozle-dev/nozle-agent-kit --skill '*' --agent opencode --copy -y
+node .agents/skills/nozle-integrate/scripts/nozle-check.mjs hosts opencode --write
+opencode mcp auth nozle-account
+```
+
+- **Skills:** the first command copies them into the repository.
+- **Guard and servers:** the second writes `.opencode/plugins/nozle-guard.js` and adds `nozle-docs` and `nozle-account` to `opencode.json`.
+- **Login:** the third logs you in to your Nozle account (browser, consent page, Allow).
+- **Questions:** asked through OpenCode's `question` tool.
+- **Not on OpenCode:** a stop or session-start guard, because a plugin there can only block by throwing. So the end-of-turn record check and the context restored after compaction don't run.
+- **After a plugin update:** run the `hosts` command again, because the guard path is absolute.
+
 ### Other hosts
 
-Cursor, Windsurf, Gemini CLI, VS Code Copilot and OpenCode: copy the skills into the repository (`npx skills add nozle-dev/nozle-agent-kit --skill nozle-integrate ...`), then run `node <skill folder>/scripts/nozle-check.mjs hosts <cursor|windsurf|gemini|copilot|opencode> --write` to add the guard config. Cline gets the skills and the docs MCP only. These hosts are less tested than Claude Code and Codex.
+Cursor, Windsurf, Gemini CLI and VS Code Copilot: copy the skills into the repository (`npx skills add nozle-dev/nozle-agent-kit --skill '*'`), then run `node <skill folder>/scripts/nozle-check.mjs hosts <cursor|windsurf|gemini|copilot> --write` to add the guard config. Cline gets the skills and the docs MCP only. These hosts are less tested than Claude Code, Codex and OpenCode.
 
 ### Self-hosted Nozle
 
@@ -91,6 +120,18 @@ A browser opens the Nozle sign-in page. Sign in, choose the organization, and cl
 - **Once per agent.** Claude Code and Codex each keep their own login. When you are already signed in to the dashboard in that browser, the second login is one click.
 - **Renews by itself.** The access token lasts an hour and the agent renews it silently, across sessions.
 - **Ends after 7 days without use,** or when you disconnect it on the dashboard's **Account** page (Connected coding agents). The agent then says the login ended, gives the login step above, and continues from its saved records after you log in.
+
+## Update or remove
+
+New versions are listed in [CHANGELOG.md](CHANGELOG.md) and on the [releases page](https://github.com/nozle-dev/nozle-agent-kit/releases). Your records (`nozle.integration.yaml` and the others) stay in your repository across updates.
+
+| Host | Update | Remove |
+|---|---|---|
+| Claude Code | `claude plugin marketplace update nozle`, then `claude plugin update nozle-agent-kit@nozle` (restart Claude Code) | `claude plugin uninstall nozle-agent-kit@nozle` |
+| Codex CLI | `codex plugin marketplace upgrade nozle`, then `codex plugin add nozle-agent-kit@nozle`; then run the `hosts codex --write` command again in each app, because the hook path contains the version | `codex plugin remove nozle-agent-kit@nozle`, then delete `.codex/hooks.json` from your apps |
+| OpenCode and other hosts | `npx skills update`, then run the `hosts <host> --write` command again in each app | `npx skills remove`, then delete `.opencode/plugins/nozle-guard.js` and the two `nozle-*` entries in `opencode.json` |
+
+To log out of the account connection: `/mcp` and choose Clear authentication in Claude Code, `codex mcp logout nozle-account`, or `opencode mcp logout nozle-account`. You can also revoke an agent from **Account > Connected agents** in the dashboard.
 
 ## Where to run the session
 
@@ -216,7 +257,7 @@ The guards are on while `nozle.integration.yaml` or `nozle-setup-plan.yaml` exis
 | Touch a real `.env` file | Refused; variable names go in `.env.example` |
 | Put a secret key in browser code, or import an SDK that contradicts the recorded stack | Blocked after the edit |
 | Build a usage key from a random id, or detect a 409 from message text | Advice after the edit |
-| Run a command with a Nozle key in it, call the production API, or send a billable event | Refused |
+| Run a command with a Nozle key in it, call the production API, or send a billable event (including `nozle-first-event` and `nozle-live-check`) | Refused |
 | Call an account tool that writes | Refused |
 | Finish with changed files not recorded, an invalid record, or a failed self-review check | Stop blocked once, with the list |
 
@@ -231,7 +272,7 @@ They hold no keys. Commit them with the code, so the next session or a teammate 
 
 ## After the agent finishes
 
-1. Install the Nozle SDK it added with your package manager.
+1. If the agent could not install a package (you refused the command, or it had no network), run the install command it gave you.
 2. Put your keys in `.env` and fill the variables listed in `.env.example`.
 3. Create the dashboard items in `nozle-setup-plan.yaml`, then run `nozle-resume`.
 4. Run your tests and build (or `nozle-verify`).
@@ -270,11 +311,6 @@ Claude Code and Codex cache an installed plugin by its version, so every release
 4. Commit, tag `vx.y.z`, and push `main` and that tag (`git push origin main vx.y.z`; never `--tags`).
 5. `gh release create vx.y.z --notes "<the changelog section>"`.
 
-### Updating an installed plugin
-
-- **Claude Code:** `claude plugin marketplace update nozle`, then `claude plugin update nozle-agent-kit@nozle`.
-- **Codex:** `codex plugin marketplace upgrade nozle`, then `codex plugin add nozle-agent-kit@nozle`. After that, run the `hosts codex --write` command again in each app, because the hook path contains the version folder.
-
 Shared sources live in `shared/references/` and `shared/scripts/`; `build:validator` copies them into each skill so every skill installs on its own (a test fails if a copy drifts). `.claude-plugin/` holds the Claude Code manifest and marketplace, `plugin.json`, `mcp.json` and `.agents/plugins/marketplace.json` the portable and Codex ones, and `hooks/hooks.json` the Claude Code hooks.
 
-`nozle-check` commands: `env <dir>` (stack check), `scan [dir]` (existing Nozle usage), `<file>` or `check <file>` (validate a record), `study`, `plan`, `progress`, `resume`, `hash`, `hosts <host> [--write]` (guard config for a host), and `hook <event>` (the guards).
+`nozle-check` commands: `env <dir>` (stack check), `scan [dir]` (existing Nozle usage), `key [dir]` (check that your API keys work, without printing them), `<file>` or `check <file>` (validate a record), `study`, `plan`, `progress`, `resume`, `hash`, `hosts <host> [--write]` (guard config for a host), and `hook <event>` (the guards).

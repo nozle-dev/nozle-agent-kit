@@ -32,6 +32,28 @@ const mentionsNozle = /nozle/i;
 const conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409/;
 // A literal prefix before the placeholder (`sub_${id}`); a reference such as f"{record}.id" is not an id built from a template.
 const builtSubscriptionId = /\b(?:subscriptionId|subscription_id|external_subscription_id|SubscriptionID)\b["']?\s*[:=]\s*(?:`[A-Za-z][^`$\n]*\$\{|f["'][A-Za-z][^"'{\n]*\{|["'][A-Za-z][^"'\n]*["']\s*\+)/;
+// A transaction callback: sequelize.transaction(async (t) => {, prisma.$transaction(async (tx) => {, knex.transaction(async (trx) => {.
+const transactionOpen = /\.(?:\$)?transaction\(\s*(?:async\s*)?(?:\(?[\w,\s]*\)?)\s*=>\s*\{|\.(?:\$)?transaction\(\s*async\s+function\s*\([^)]*\)\s*\{/g;
+
+/** True when a Nozle usage call sits inside a database transaction callback (shortcut: brace matching, not a parser). */
+export function chargesInsideTransaction(text: string): boolean {
+  for (const match of text.matchAll(transactionOpen)) {
+    let depth = 0;
+    const start = (match.index ?? 0) + match[0].length - 1;
+    for (let i = start; i < text.length; i += 1) {
+      if (text[i] === "{") depth += 1;
+      else if (text[i] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          if (usageCall.test(text.slice(start, i))) return true;
+          break;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 const clientAbortToProvider = /\bsignal\s*:\s*(?:request|req|event\.request|c\.req\.raw|ctx\.request)\.signal\b/;
 const subscriptionCreate = /\bsubscriptions\.create\(|\bcreateSubscription\(|\bSubscriptions\.Create\(|["'`][^"'`\n]*\/subscriptions["'`]\s*,\s*\{[^\n]*method:\s*["']POST/;
 
@@ -84,6 +106,9 @@ export function lintSource(path: string, text: string, backendPath?: string, { c
   }
   if (clientAbortToProvider.test(text)) {
     advice.push(`${path}: passes the client's abort signal to the provider call, so a disconnect cancels the provider and the usage is never billed; keep reading to the final usage, then bill`);
+  }
+  if (!testFile.test(path) && chargesInsideTransaction(text)) {
+    advice.push(`${path}: calls Nozle inside a database transaction; charge after the commit, keyed by the committed record, so a rollback can't leave a charge behind`);
   }
   return notes.length ? { advice, notes } : { advice };
 }

@@ -5,6 +5,7 @@ import YAML from "yaml";
 
 import { detectEnvironment, renderEnvironment, type Files } from "./env.ts";
 import { renderUsageScan, scanNozleUsage } from "./scan.ts";
+import { checkKeys, renderKeyResults } from "./key.ts";
 import { adapters } from "./hook-adapters.ts";
 import { hostFiles, hostNames, hostNotes, type HostName } from "./hosts.ts";
 import { hookEvents, repositoryRelative, runHook, sha256, type HookInput } from "./hook.ts";
@@ -260,6 +261,17 @@ function main(argv: string[]): void {
     process.stdout.write(asJson ? `${JSON.stringify({ ...scan, packages }, null, 2)}\n` : renderUsageScan(scan, packages));
     return;
   }
+  if (command === "key") {
+    const flag = rest.indexOf("--base");
+    const base = flag === -1 ? "https://api.nozle.app/core" : rest[flag + 1];
+    const root = resolve(rest.filter((_, i) => flag === -1 || (i !== flag && i !== flag + 1))[0] ?? ".");
+    if (!base || !existsSync(root)) return fail("Usage: nozle-check key [directory] [--base <core url>]", 2);
+    void checkKeys(root, base).then((results) => {
+      process.stdout.write(renderKeyResults(results));
+      process.exitCode = results.length === 0 ? 2 : results.every((r) => r.ok) ? 0 : 1;
+    });
+    return;
+  }
   if (command === "study") {
     const file = resolve(rest[0] ?? "nozle-study.yaml");
     const text = readFileOrFail(file);
@@ -312,7 +324,7 @@ function main(argv: string[]): void {
     }
   }
   const filename = command === "check" ? rest[0] : command;
-  if (!filename) return fail("Usage: nozle-check [check] <nozle.integration.yaml|nozle-setup-plan.yaml>\n       nozle-check plan <tasks.yaml>\n       nozle-check progress [nozle.integration.yaml]\n       nozle-check resume [nozle.integration.yaml] --config <current-configuration.yaml>\n       nozle-check hash <repository> <path>...\n       nozle-check env [directory] [--json]\n       nozle-check scan [directory] [--json]\n       nozle-check study [nozle-study.yaml]\n       nozle-check hook <event> < payload.json\n       nozle-check hook --host <claude|codex|cursor|windsurf|gemini|copilot|opencode> < native-hook-payload.json\n       nozle-check hosts <codex|cursor|windsurf|gemini|copilot|opencode|cline> [--write] [directory]", 2);
+  if (!filename) return fail("Usage: nozle-check [check] <nozle.integration.yaml|nozle-setup-plan.yaml>\n       nozle-check plan <tasks.yaml>\n       nozle-check progress [nozle.integration.yaml]\n       nozle-check resume [nozle.integration.yaml] --config <current-configuration.yaml>\n       nozle-check hash <repository> <path>...\n       nozle-check env [directory] [--json]\n       nozle-check scan [directory] [--json]\n       nozle-check key [directory] [--base <core url>]\n       nozle-check study [nozle-study.yaml]\n       nozle-check hook <event> < payload.json\n       nozle-check hook --host <claude|codex|cursor|windsurf|gemini|copilot|opencode> < native-hook-payload.json\n       nozle-check hosts <codex|cursor|windsurf|gemini|copilot|opencode|cline> [--write] [directory]", 2);
   const text = readFileOrFail(filename);
   if (text === undefined) return;
   const errors = checkDocument(text, filename);

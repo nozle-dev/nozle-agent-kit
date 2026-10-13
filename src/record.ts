@@ -9,6 +9,10 @@ export const reviewChecks = [
   "usage-key", "conflict-409", "retries", "error-types", "charge-order", "stream-abort", "client-ids",
   "subscription-id", "paid-without-payment", "shadow-writes", "stuck-unit", "legacy-balance",
   "migration", "secret-key", "scope-changes",
+  "ledger-once", "pending-owner", "charge-in-transaction", "key-provenance", "check-quantity", "off-mode", "renewal",
+  "identity-lookup", "legacy-gates", "nullable-fields", "one-clock", "denial-retry", "claim-after-fulfil", "status-reader",
+  "codes-exist", "lint-clean", "charge-parity", "shadow-seed",
+  "dedupe-scope", "route-coverage", "seed-before-read", "next-period", "cost-event-id", "denial-after-work", "limit-source",
 ] as const;
 const reviewResults = new Set(["pass", "fail", "not_applicable"]);
 const setupStatuses = new Set(["manual_pending", "code_written", "code_verified", "awaiting_activation", "live_observed"]);
