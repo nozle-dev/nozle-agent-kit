@@ -8008,6 +8008,15 @@ function validateIntegrationRecord(value, { requireReview = true } = {}) {
     errors.push("organization_id is required");
   if (!Array.isArray(record.selected_goals) || record.selected_goals.length === 0 || record.selected_goals.some((goal) => !Number.isInteger(goal) || goal < 1 || goal > 10) || new Set(record.selected_goals).size !== record.selected_goals.length) {
     errors.push("selected_goals must contain only options 1 through 10");
+  } else if (!record.approved_scope || requireReview) {
+    const decisions = Array.isArray(record.decisions) ? record.decisions : [];
+    const answered = decisions.some((raw) => {
+      const item = object2(raw);
+      return item?.id === "goals" && ["user", "user_confirmed_recommendation"].includes(String(item.basis));
+    });
+    if (!answered) {
+      errors.push(`selected_goals need the user's answer: add a decisions entry with id "goals" and basis user or user_confirmed_recommendation (an empty or timed-out question answers nothing)`);
+    }
   }
   if (record.stack !== undefined) {
     const stack = object2(record.stack);

@@ -94,6 +94,16 @@ export function validateIntegrationRecord(value: unknown, { requireReview = true
       record.selected_goals.some((goal) => !Number.isInteger(goal) || goal < 1 || goal > 10) ||
       new Set(record.selected_goals).size !== record.selected_goals.length) {
     errors.push("selected_goals must contain only options 1 through 10");
+  } else if (!record.approved_scope || requireReview) {
+    // Goals are the user's choice: a draft (and the handoff) records them only with the user's answer behind them.
+    const decisions = Array.isArray(record.decisions) ? (record.decisions as unknown[]) : [];
+    const answered = decisions.some((raw) => {
+      const item = object(raw);
+      return item?.id === "goals" && ["user", "user_confirmed_recommendation"].includes(String(item.basis));
+    });
+    if (!answered) {
+      errors.push('selected_goals need the user\'s answer: add a decisions entry with id "goals" and basis user or user_confirmed_recommendation (an empty or timed-out question answers nothing)');
+    }
   }
   if (record.stack !== undefined) {
     const stack = object(record.stack);

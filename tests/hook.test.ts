@@ -32,7 +32,7 @@ function writeRecord(overrides: Record<string, unknown> = {}) {
       { id: "identity", label: "Identity", status: "completed", evidence: "bun test passed" },
       { id: "meter", label: "Meter", status: "pending", depends_on: ["identity"] },
     ],
-    decisions: [],
+    decisions: [{ id: "goals", question: "Which goals?", answer: "5", basis: "user" }],
     peers: [],
     self_review: Object.fromEntries(reviewChecks.map((check) => [check, { result: "pass", evidence: "src/a.ts:1" }])),
     ...overrides,
@@ -358,10 +358,10 @@ describe("peer repositories", () => {
   });
 
   test("stop asks for peers on a draft, and for record_seen when the peer's record is readable", () => {
-    writeFileSync(join(root, "nozle.integration.yaml"), "schema: nozle.integration\nversion: 1\nselected_goals: [5]\n");
+    writeFileSync(join(root, "nozle.integration.yaml"), "schema: nozle.integration\nversion: 1\nselected_goals: [5]\ndecisions: [{ id: goals, question: Which goals?, answer: \"5\", basis: user }]\n");
     expect(runHook("stop", { cwd: root }).reason).toContain("no peers entry");
     expect(runHook("stop", { cwd: root, stop_hook_active: true }).decision).toBe("allow");
-    writeFileSync(join(root, "nozle.integration.yaml"), YAML.stringify({ selected_goals: [5], peers: [{ role: "frontend", location: peer, record_seen: false }] }));
+    writeFileSync(join(root, "nozle.integration.yaml"), YAML.stringify({ selected_goals: [5], decisions: [{ id: "goals", question: "Which goals?", answer: "5", basis: "user" }], peers: [{ role: "frontend", location: peer, record_seen: false }] }));
     expect(runHook("stop", { cwd: root }).decision).toBe("allow");
     writeFileSync(join(peer, "nozle.integration.yaml"), "schema: nozle.integration\n");
     expect(runHook("stop", { cwd: root }).reason).toContain("set record_seen: true");
@@ -371,7 +371,7 @@ describe("peer repositories", () => {
 test("stop checks the fields a draft record already holds", () => {
   writeFileSync(join(root, "nozle.integration.yaml"), YAML.stringify({ selected_goals: ["1. Show pricing and plans"], peers: [] }));
   expect(runHook("stop", { cwd: root }).reason).toContain("selected_goals must contain only options 1 through 10");
-  writeFileSync(join(root, "nozle.integration.yaml"), YAML.stringify({ selected_goals: [1, 8], peers: [] }));
+  writeFileSync(join(root, "nozle.integration.yaml"), YAML.stringify({ selected_goals: [1, 8], decisions: [{ id: "goals", question: "Which goals?", answer: "5", basis: "user" }], peers: [] }));
   expect(runHook("stop", { cwd: root }).decision).toBe("allow");
 });
 
@@ -437,4 +437,9 @@ test("stop asks for a hand-off summary only when the record is at hand-off", () 
   writeRecord();
   const handoff = runHook("stop", { cwd: root }).reason ?? "";
   expect(handoff).toContain("normal hand-off summary");
+});
+
+test("stop refuses a draft whose goals were not answered by the user", () => {
+  writeFileSync(join(root, "nozle.integration.yaml"), YAML.stringify({ schema: "nozle.integration", version: 1, selected_goals: [10], peers: [] }));
+  expect(runHook("stop", { cwd: root }).reason).toContain('decisions entry with id "goals"');
 });

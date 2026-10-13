@@ -19,7 +19,10 @@ const record = {
   },
   source_files: [{ path: "src/paid.ts", sha256: "a".repeat(64) }],
   tasks: [{ id: "meter-paid", status: "completed", evidence: "paid fixture emits one event" }],
-  decisions: [{ id: "charge-order", question: "Charge before or after the work?", answer: "After", basis: "user" }],
+  decisions: [
+    { id: "goals", question: "Which goals?", answer: "5 and 7", basis: "user" },
+    { id: "charge-order", question: "Charge before or after the work?", answer: "After", basis: "user" },
+  ],
   peers: [],
   self_review: Object.fromEntries(reviewChecks.map((check) => [check, { result: "pass", evidence: "src/a.ts:1" }])),
 };
@@ -57,12 +60,23 @@ describe("integration record", () => {
 
   test("validates decisions: required at handoff, each with an id, answer and a known basis", () => {
     const { decisions: _, ...without } = record;
-    expect(validateIntegrationRecord(without)[0]).toContain("decisions must be a list");
+    expect(validateIntegrationRecord(without).join(" ")).toContain("decisions must be a list");
     expect(validateIntegrationRecord(without, { requireReview: false })).toEqual([]);
-    expect(validateIntegrationRecord({ ...record, decisions: [] })).toEqual([]);
-    expect(validateIntegrationRecord({ ...record, decisions: [{ id: "a", question: "q", answer: "x", basis: "guess" }] })[0]).toContain("need id, question, answer and basis");
+    const goals = { id: "goals", question: "Which goals?", answer: "5 and 7", basis: "user" };
+    expect(validateIntegrationRecord({ ...record, decisions: [goals] })).toEqual([]);
+    expect(validateIntegrationRecord({ ...record, decisions: [goals, { id: "a", question: "q", answer: "x", basis: "guess" }] })[0]).toContain("need id, question, answer and basis");
     const dup = { id: "a", question: "q", answer: "x", basis: "user" };
-    expect(validateIntegrationRecord({ ...record, decisions: [dup, dup] })[0]).toContain("duplicate id a");
+    expect(validateIntegrationRecord({ ...record, decisions: [goals, dup, dup] })[0]).toContain("duplicate id a");
+  });
+
+  test("goals in a draft or at handoff need the user's answer; an unanswered question records none", () => {
+    const draft = { schema: "nozle.integration", version: 1, organization_id: "o", selected_goals: [10] };
+    expect(validateIntegrationRecord(draft, { requireReview: false }).join(" ")).toContain('decisions entry with id "goals"');
+    const assumed = { ...draft, decisions: [{ id: "goals", question: "Which goals?", answer: "10", basis: "matched_in_account" }] };
+    expect(validateIntegrationRecord(assumed, { requireReview: false }).join(" ")).toContain('decisions entry with id "goals"');
+    const answered = { ...draft, decisions: [{ id: "goals", question: "Which goals?", answer: "10", basis: "user" }] };
+    expect(validateIntegrationRecord(answered, { requireReview: false }).join(" ")).not.toContain('id "goals"');
+    expect(validateIntegrationRecord({ ...record, decisions: [] }).join(" ")).toContain('decisions entry with id "goals"');
   });
 
   test("requires every self_review check with a result and evidence at handoff, not on resume", () => {
@@ -251,7 +265,7 @@ describe("task dependencies in the record", () => {
       { id: "identity", status: "pending" },
       { id: "meter", status: "pending", depends_on: ["identity"] },
     ],
-    decisions: [],
+    decisions: [{ id: "goals", question: "Which goals?", answer: "5", basis: "user" }],
     peers: [],
     self_review: Object.fromEntries(reviewChecks.map((check) => [check, { result: "pass", evidence: "src/a.ts:1" }])),
   });
@@ -277,12 +291,12 @@ describe("task dependencies in the record", () => {
 });
 
 describe("blocked integrations and YAML problems", () => {
-  const blocked = { schema: "nozle.integration", version: 1, organization_id: "o", selected_goals: [5], blocked: { reason: "no server identity" }, decisions: [], peers: [] };
+  const blocked = { schema: "nozle.integration", version: 1, organization_id: "o", selected_goals: [5], blocked: { reason: "no server identity" }, decisions: [{ id: "goals", question: "Which goals?", answer: "5", basis: "user" }], peers: [] };
   test("a blocked record needs only a reason and decisions", () => {
     expect(validateIntegrationRecord(blocked)).toEqual([]);
     expect(validateIntegrationRecord({ ...blocked, blocked: {} })[0]).toContain("blocked needs a reason");
     const { decisions: _, ...without } = blocked;
-    expect(validateIntegrationRecord(without)[0]).toContain("decisions must be a list");
+    expect(validateIntegrationRecord(without).join(" ")).toContain("decisions must be a list");
   });
   test("a parse error names the line and the fix", async () => {
     const { yamlProblem } = await import("../src/record.ts");
@@ -295,7 +309,7 @@ describe("blocked integrations and YAML problems", () => {
 });
 
 describe("peers and interfaces", () => {
-  const base = { schema: "nozle.integration", version: 1, organization_id: "o", selected_goals: [5], blocked: { reason: "waiting for the backend" }, decisions: [], peers: [] };
+  const base = { schema: "nozle.integration", version: 1, organization_id: "o", selected_goals: [5], blocked: { reason: "waiting for the backend" }, decisions: [{ id: "goals", question: "Which goals?", answer: "5", basis: "user" }], peers: [] };
   test("accepts a backend contract and a frontend consumer", () => {
     expect(validateIntegrationRecord({ ...base, peers: [{ role: "backend", location: "../api", record_seen: true }], interfaces: [
       { id: "balance", method: "GET", route: "/billing/credits", provides: true, status: "provided" },

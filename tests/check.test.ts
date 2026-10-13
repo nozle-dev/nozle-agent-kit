@@ -80,6 +80,7 @@ describe("resume command", () => {
 version: 1
 organization_id: org_example
 selected_goals: [5]
+decisions: [{ id: goals, question: Which goals?, answer: "5", basis: user }]
 configuration:
   meters: { status: complete, revision: ${revision} }
 approved_scope:
