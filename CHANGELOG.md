@@ -2,6 +2,18 @@
 
 Each release raises the version in every manifest (`bun scripts/release.ts <version>`). Claude Code and Codex cache an installed plugin by version, so a change shipped without a new version doesn't reach anyone who already installed it.
 
+## [1.0.2] - 2026-10-13
+
+### Fixed
+- An unanswered question was taken as an answer. Codex closes an unanswered `request_user_input` after about two minutes and returns empty answers. The agent then used its own recommendation as the choice, recorded the goal and kept working. Now:
+  - an empty, dismissed or timed-out question decides nothing and is asked again as text;
+  - after asking, the agent ends its turn and waits;
+  - goals enter a draft record only with a `decisions` entry `goals` whose basis is the user's answer, and the Stop guard refuses a draft without one.
+- Goal questions on a host without multi-select (Codex) now offer the recommended set as the first option, with smaller sets as the others; any numbers can be typed in the free-text answer.
+
+### Changed
+- The login step tells the user the agent waits only about 5 minutes. If onboarding takes longer, they run the agent's login again afterwards; it's one click, because the browser is already signed in.
+
 ## [1.0.1] - 2026-10-13
 
 ### Fixed

@@ -102,7 +102,7 @@ export function validateIntegrationRecord(value: unknown, { requireReview = true
       return item?.id === "goals" && ["user", "user_confirmed_recommendation"].includes(String(item.basis));
     });
     if (!answered) {
-      errors.push('selected_goals need the user\'s answer: add a decisions entry with id "goals" and basis user or user_confirmed_recommendation (an empty or timed-out question answers nothing)');
+      errors.push('selected_goals need the user\'s answer: ask the user which goals they want, end your turn, and only after they reply record their words in a decisions entry with id "goals" (basis user, or user_confirmed_recommendation when they accepted your recommendation). Never write that entry yourself: goals from an earlier record, your recommendation, or an empty or timed-out question are not an answer');
     }
   }
   if (record.stack !== undefined) {
