@@ -8742,6 +8742,8 @@ function stop(root, input) {
 }
 function nestedIntegrationRoots(start, depth = 3) {
   const found = [];
+  if (!insideGitRepository(resolve(start)))
+    return found;
   const skip = new Set(["node_modules", ".git", ".venv", "venv", "dist", "build", ".next", "vendor", "target"]);
   const walk = (dir, level) => {
     if (level > depth)
@@ -8752,6 +8754,8 @@ function nestedIntegrationRoots(start, depth = 3) {
     } catch {
       return;
     }
+    if (level > 0 && entries.includes(".git"))
+      return;
     if (level > 0 && (entries.includes(recordName) || entries.includes(setupName))) {
       found.push(dir);
       return;
@@ -8768,6 +8772,14 @@ function nestedIntegrationRoots(start, depth = 3) {
   };
   walk(resolve(start), 0);
   return found;
+}
+function insideGitRepository(dir) {
+  for (let current = dir;; current = dirname(current)) {
+    if (existsSync2(join2(current, ".git")))
+      return true;
+    if (dirname(current) === current)
+      return false;
+  }
 }
 var rootFor = (cwd, target, fallback) => findIntegrationRoot(dirname(resolve(cwd ?? ".", target))) ?? fallback;
 function combine(results) {

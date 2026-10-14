@@ -434,10 +434,13 @@ function stop(root: string, input: HookInput): HookResult {
 
 /**
  * Records below `start` (a workspace that keeps one record per service, opened at the workspace root).
+ * Only inside one git repository: a folder of unrelated repositories (~/Code) is not a workspace, and a
+ * nested repository is another project whose records this session did not write.
  * shortcut: three levels deep and skipping dependency folders, enough for service folders in a repository.
  */
 export function nestedIntegrationRoots(start: string, depth = 3): string[] {
   const found: string[] = [];
+  if (!insideGitRepository(resolve(start))) return found;
   const skip = new Set(["node_modules", ".git", ".venv", "venv", "dist", "build", ".next", "vendor", "target"]);
   const walk = (dir: string, level: number) => {
     if (level > depth) return;
@@ -447,6 +450,7 @@ export function nestedIntegrationRoots(start: string, depth = 3): string[] {
     } catch {
       return;
     }
+    if (level > 0 && entries.includes(".git")) return;
     if (level > 0 && (entries.includes(recordName) || entries.includes(setupName))) {
       found.push(dir);
       return;
@@ -463,6 +467,13 @@ export function nestedIntegrationRoots(start: string, depth = 3): string[] {
   };
   walk(resolve(start), 0);
   return found;
+}
+
+function insideGitRepository(dir: string): boolean {
+  for (let current = dir; ; current = dirname(current)) {
+    if (existsSync(join(current, ".git"))) return true;
+    if (dirname(current) === current) return false;
+  }
 }
 
 /** The record that owns a path: the nearest one above the file itself, else the one above the working directory. */
