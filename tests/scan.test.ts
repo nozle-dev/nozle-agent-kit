@@ -21,6 +21,14 @@ describe("scanNozleUsage", () => {
     expect(by[7]).toMatchObject({ file: "app/routes.py", line: 2 });
     expect(by[9]).toMatchObject({ file: "app/routes.py", line: 3 });
   });
+  test("finds capture helpers and the billing handler", () => {
+    const by = Object.fromEntries(scanNozleUsage({
+      "src/ai.ts": 'import { Nozle } from "@nozle-js/node";\nconst f = nozle.captureFetch({ customerId });',
+      "src/api/billing.ts": 'import { createBillingHandler } from "@nozle-js/node";\nexport const GET = createBillingHandler(nozle, { getCustomerId });',
+    }).rows.map((row) => [row.capability, row.hits[0]]));
+    expect(by[5]).toMatchObject({ file: "src/ai.ts", line: 2 });
+    expect(by[8]).toMatchObject({ file: "src/api/billing.ts" });
+  });
   test("says plainly when nothing is there", () => {
     expect(renderUsageScan(scanNozleUsage({ "a.ts": "console.log(1)" }), [])).toContain("No Nozle usage found");
     expect(renderUsageScan(scan, [{ name: "@nozle-js/node", spec: "^0.10.0" }])).toContain("src/billing.ts:3");

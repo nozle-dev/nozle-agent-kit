@@ -7235,7 +7235,7 @@ function detectEnvironment(files) {
   const hasNodeServer = [...frameworks].some((f) => SERVER_FRAMEWORKS.has(f)) || frameworks.has("sveltekit") && runtime !== "static" && runtime !== "workers" || frameworks.has("astro") && runtime === "node";
   if (hasPyServer || languages.has("python") && !hasNodeServer) {
     backend.path = "python-sdk";
-    backend.reasons.push("Python backend: `nozle-sdk` (Python >= 3.9, synchronous `requests`; wrap calls in a thread under async frameworks)");
+    backend.reasons.push("Python backend: `nozle-sdk` (Python >= 3.9; under async frameworks use `AsyncNozle` from 0.13, or run the sync client in a thread)");
   } else if (runtime === "workers") {
     backend.path = "rest";
     backend.reasons.push("Workers/edge runtime: SDK support is not documented, so use the REST API with `fetch`");
@@ -7261,7 +7261,7 @@ function detectEnvironment(files) {
   const native = [...frameworks].filter((f) => FRONTEND_NATIVE.has(f));
   if (hasReact) {
     frontend.path = "react-sdk";
-    frontend.reasons.push("React: `@nozle-js/react` (React >= 18; peers `@stripe/stripe-js` and `@stripe/react-stripe-js`; publishable key only, customer billing goes through your backend)");
+    frontend.reasons.push("React: `@nozle-js/react` (React >= 18; peers `@stripe/stripe-js`, `@stripe/react-stripe-js` and, from 0.11, `@tanstack/react-query` v5; themed with `appearance`, not Tailwind; publishable key only, customer billing goes through your backend)");
     const major = Number(/(\d+)/.exec(String(nodeDeps["react"] ?? ""))?.[1]);
     if (major && major < 18)
       frontend.reasons.push(`React ${major} is below the SDK minimum of 18`);
@@ -7314,10 +7314,10 @@ var signals = [
   { capability: 2, label: "Checkout and payments", pattern: /\.checkout\(|checkoutMany|checkout_many|\/checkout\b|CheckoutButton|verifyCheckout/ },
   { capability: 3, label: "Subscriptions", pattern: /\.subscribe\(|\/subscribe\b|cancel_?[sS]ubscription|applySubscriptionTransition|subscriptions?\.(?:create|cancel)/ },
   { capability: 4, label: "Credits and top-ups", pattern: /usage\.track|usage_track|\/usage\/track|credits\.|credit_systems|creditSystems/ },
-  { capability: 5, label: "Usage tracking", pattern: /\.track\(|\/events\b|wrapOpenAI|wrapAnthropic|wrap_openai|wrap_anthropic|WithLLM|transaction_?[iI]d/ },
+  { capability: 5, label: "Usage tracking", pattern: /\.track\(|\/events\b|wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_(?:async_)?http_client|record_usage|WrapHTTPClient|RecordUsage|WithLLM|transaction_?[iI]d/ },
   { capability: 6, label: "Feature access and limits", pattern: /\.can\(|\/can\b|usage\.check|usage_check|check-and-deduct|useEntitlement/ },
-  { capability: 7, label: "Costs and margins", pattern: /costEvents|cost_events|\/cost-events|costMeterCode|cost_meter_code/ },
-  { capability: 8, label: "Customer billing dashboard", pattern: /BillingPortal|billing-portal|useSubscription|useCredits/ },
+  { capability: 7, label: "Costs and margins", pattern: /costEvents|cost_events|\/cost-events|TrackCostEvent|costMeterCode|CostMeterCode|cost_meter_code/ },
+  { capability: 8, label: "Customer billing dashboard", pattern: /BillingPortal|billing-portal|createBillingHandler|billingEndpoint|CurrentPlan|use(?:Subscription|CreditBalance|CreditHistory|Usage|Invoices|InvoiceDownload)\b/ },
   { capability: 9, label: "Billing and data sync", pattern: /webhook/i },
   { capability: 0, label: "Customer record (base)", pattern: /customers\.upsert|customers\.create|\/customers\b|customer_not_found/ }
 ];
@@ -7946,18 +7946,19 @@ var backendPaths = ["node-sdk", "python-sdk", "go-sdk", "rest"];
 var publicSecret = /\b(?:NEXT_PUBLIC|VITE|PUBLIC|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC)_NOZLE_\w*(?:SECRET|API_KEY)\w*/;
 var serverSecret = /\bNOZLE_(?:SECRET_KEY|API_KEY)\b/;
 var clientDirective = /^\s*["']use client["']/m;
+var serverSdkImport = /^\s*import\s+(?!type\b)[^\n]*["']@nozle-js\/node["']|\brequire\(\s*["']@nozle-js\/node["']\s*\)/m;
 var randomKey = /(?:idempotency|transaction)[_-]?(?:key|id)[^\n]*?(?:randomUUID|uuid4|uuidv4|uuid\.v4|uuid\.New|nanoid|Math\.random|Date\.now|time\.time|time\.Now)/i;
 var randomAssign = /\b(\w+)\s*(?::\s*\w+\s*)?=\s*(?:await\s+)?(?:str\()?(?:crypto\.randomUUID|randomUUID|uuid\.uuid4|uuid4|uuidv4|uuid\.v4|uuid\.New(?:String)?|nanoid|Date\.now)\(/g;
 var keyField = /(?:idempotency|transaction)[_-]?(?:key|id)|idempotencyKey|transactionId|TransactionID|IdempotencyKey|operation_key|cost_event_id/i;
 var textConflict = /(?:\.message|\bstr\(\w+\)|\bString\(\w+\)|\.Error\(\))[^\n]*?(?:\.includes\(|\.match\(|\.indexOf\(|\.test\(|\bin\b|strings\.Contains)[^\n]*?(?:409|duplicate|already)/i;
 var conflictTextFirst = /["'`](?:[^"'`\n]*?(?:409|duplicate|already)[^"'`\n]*?)["'`]\s+in\s+(?:str\(\w+\)|\w+\.message)/i;
 var creditTrack = /\busage\.(?:track|Track)\(|\bTrackUsage\(/;
-var featureTrack = /(?<!usage)\.(?:track|Track)\(/;
-var llmWrapper = /\b(?:wrapOpenAI|wrapAnthropic|wrap_openai|wrap_anthropic|WrapOpenAIHTTPClient|WrapAnthropicHTTPClient)\(/;
+var featureTrack = /(?<!usage|costEvents|cost_events)\.(?:track|Track)\(/;
+var llmWrapper = /\b(?:wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_http_client|capture_async_http_client|record_usage|WrapOpenAIHTTPClient|WrapAnthropicHTTPClient|WrapHTTPClient|RecordUsage)\(/;
 var testFile = /(?:^|\/)(?:tests?|__tests__|spec)\/|[._-](?:test|spec)\.[a-z]+$|(?:^|\/)test_[^/]+\.py$/;
 var usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\/api\/v1\/(?:events|usage\/track)\b/;
 var mentionsNozle = /nozle/i;
-var conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409/;
+var conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409|\b(?:hasCode|has_code|HasCode)\(\s*["']idempotency_key_reused["']/;
 var builtSubscriptionId = /\b(?:subscriptionId|subscription_id|external_subscription_id|SubscriptionID)\b["']?\s*[:=]\s*(?:`[A-Za-z][^`$\n]*\$\{|f["'][A-Za-z][^"'{\n]*\{|["'][A-Za-z][^"'\n]*["']\s*\+)/;
 var transactionOpen = /\.(?:\$)?transaction\(\s*(?:async\s*)?(?:\(?[\w,\s]*\)?)\s*=>\s*\{|\.(?:\$)?transaction\(\s*async\s+function\s*\([^)]*\)\s*\{/g;
 function chargesInsideTransaction(text) {
@@ -7995,6 +7996,9 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
   if (clientDirective.test(text) && serverSecret.test(text)) {
     return { block: `${path} is client code and reads a Nozle secret key; move the call to a server route`, advice };
   }
+  if (clientDirective.test(text) && serverSdkImport.test(text)) {
+    return { block: `${path} is client code and imports @nozle-js/node, which reads the secret key; call a server route instead (on Node, createBillingHandler serves the React billing hooks)`, advice };
+  }
   if (backendPath && backendPaths.includes(backendPath) && !manifest.test(path)) {
     for (const [sdk, pattern] of Object.entries(serverSdks)) {
       if (sdk !== backendPath && pattern.test(text)) {
@@ -8017,7 +8021,7 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
     advice.push(`${path}: a duplicate (409) is detected from the error text; check the status code instead`);
   }
   if (featureTrack.test(text) && (creditTrack.test(text) || llmWrapper.test(text))) {
-    advice.push(`${path}: calls track() next to ${creditTrack.test(text) ? "usage.track" : "an LLM wrapper"}; both bill, so make sure they never record the same action`);
+    advice.push(`${path}: calls track() next to ${creditTrack.test(text) ? "usage.track" : "an LLM wrapper or capture helper"}; both bill, so make sure they never record the same action`);
   }
   if (!conflictHandled && !testFile.test(path) && mentionsNozle.test(text) && usageCall.test(text) && !conflictStatus.test(text)) {
     advice.push(`${path}: sends usage but never checks for a 409 by status; log a 409 separately as a caller bug (the key was reused with a different body)`);
