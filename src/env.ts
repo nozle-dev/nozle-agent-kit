@@ -152,7 +152,7 @@ export function detectEnvironment(files: Files): Environment {
   const hasNodeServer = [...frameworks].some((f) => SERVER_FRAMEWORKS.has(f)) || (frameworks.has("sveltekit") && runtime !== "static" && runtime !== "workers") || (frameworks.has("astro") && runtime === "node");
   if (hasPyServer || (languages.has("python") && !hasNodeServer)) {
     backend.path = "python-sdk";
-    backend.reasons.push("Python backend: `nozle-sdk` (Python >= 3.9, synchronous `requests`; wrap calls in a thread under async frameworks)");
+    backend.reasons.push("Python backend: `nozle-sdk` (Python >= 3.9; under async frameworks use `AsyncNozle` from 0.13, or run the sync client in a thread)");
   } else if (runtime === "workers") {
     backend.path = "rest";
     backend.reasons.push("Workers/edge runtime: SDK support is not documented, so use the REST API with `fetch`");
@@ -178,7 +178,7 @@ export function detectEnvironment(files: Files): Environment {
   const native = [...frameworks].filter((f) => FRONTEND_NATIVE.has(f));
   if (hasReact) {
     frontend.path = "react-sdk";
-    frontend.reasons.push("React: `@nozle-js/react` (React >= 18; peers `@stripe/stripe-js` and `@stripe/react-stripe-js`; publishable key only, customer billing goes through your backend)");
+    frontend.reasons.push("React: `@nozle-js/react` (React >= 18; peers `@stripe/stripe-js`, `@stripe/react-stripe-js` and, from 0.11, `@tanstack/react-query` v5; themed with `appearance`, not Tailwind; publishable key only, customer billing goes through your backend)");
     const major = Number(/(\d+)/.exec(String(nodeDeps["react"] ?? ""))?.[1]);
     if (major && major < 18) frontend.reasons.push(`React ${major} is below the SDK minimum of 18`);
   } else if (native.length) {

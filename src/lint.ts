@@ -17,19 +17,22 @@ export const backendPaths: readonly BackendPath[] = ["node-sdk", "python-sdk", "
 const publicSecret = /\b(?:NEXT_PUBLIC|VITE|PUBLIC|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC)_NOZLE_\w*(?:SECRET|API_KEY)\w*/;
 const serverSecret = /\bNOZLE_(?:SECRET_KEY|API_KEY)\b/;
 const clientDirective = /^\s*["']use client["']/m;
+// A value import of the server SDK; `import type` is erased at build time and is fine in client code.
+const serverSdkImport = /^\s*import\s+(?!type\b)[^\n]*["']@nozle-js\/node["']|\brequire\(\s*["']@nozle-js\/node["']\s*\)/m;
 const randomKey = /(?:idempotency|transaction)[_-]?(?:key|id)[^\n]*?(?:randomUUID|uuid4|uuidv4|uuid\.v4|uuid\.New|nanoid|Math\.random|Date\.now|time\.time|time\.Now)/i;
 const randomAssign = /\b(\w+)\s*(?::\s*\w+\s*)?=\s*(?:await\s+)?(?:str\()?(?:crypto\.randomUUID|randomUUID|uuid\.uuid4|uuid4|uuidv4|uuid\.v4|uuid\.New(?:String)?|nanoid|Date\.now)\(/g;
 const keyField = /(?:idempotency|transaction)[_-]?(?:key|id)|idempotencyKey|transactionId|TransactionID|IdempotencyKey|operation_key|cost_event_id/i;
 const textConflict = /(?:\.message|\bstr\(\w+\)|\bString\(\w+\)|\.Error\(\))[^\n]*?(?:\.includes\(|\.match\(|\.indexOf\(|\.test\(|\bin\b|strings\.Contains)[^\n]*?(?:409|duplicate|already)/i;
 const conflictTextFirst = /["'`](?:[^"'`\n]*?(?:409|duplicate|already)[^"'`\n]*?)["'`]\s+in\s+(?:str\(\w+\)|\w+\.message)/i;
 const creditTrack = /\busage\.(?:track|Track)\(|\bTrackUsage\(/;
-const featureTrack = /(?<!usage)\.(?:track|Track)\(/;
-const llmWrapper = /\b(?:wrapOpenAI|wrapAnthropic|wrap_openai|wrap_anthropic|WrapOpenAIHTTPClient|WrapAnthropicHTTPClient)\(/;
+// Not usage.track (credit consumption) and not costEvents.track (cost only, never bills).
+const featureTrack = /(?<!usage|costEvents|cost_events)\.(?:track|Track)\(/;
+const llmWrapper = /\b(?:wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_http_client|capture_async_http_client|record_usage|WrapOpenAIHTTPClient|WrapAnthropicHTTPClient|WrapHTTPClient|RecordUsage)\(/;
 // Direct Nozle calls only, so a file that calls the app's own track() wrapper is not flagged.
 const testFile = /(?:^|\/)(?:tests?|__tests__|spec)\/|[._-](?:test|spec)\.[a-z]+$|(?:^|\/)test_[^/]+\.py$/;
 const usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\/api\/v1\/(?:events|usage\/track)\b/;
 const mentionsNozle = /nozle/i;
-const conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409/;
+const conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409|\b(?:hasCode|has_code|HasCode)\(\s*["']idempotency_key_reused["']/;
 // A literal prefix before the placeholder (`sub_${id}`); a reference such as f"{record}.id" is not an id built from a template.
 const builtSubscriptionId = /\b(?:subscriptionId|subscription_id|external_subscription_id|SubscriptionID)\b["']?\s*[:=]\s*(?:`[A-Za-z][^`$\n]*\$\{|f["'][A-Za-z][^"'{\n]*\{|["'][A-Za-z][^"'\n]*["']\s*\+)/;
 // A transaction callback: sequelize.transaction(async (t) => {, prisma.$transaction(async (tx) => {, knex.transaction(async (trx) => {.
@@ -74,6 +77,9 @@ export function lintSource(path: string, text: string, backendPath?: string, { c
   if (clientDirective.test(text) && serverSecret.test(text)) {
     return { block: `${path} is client code and reads a Nozle secret key; move the call to a server route`, advice };
   }
+  if (clientDirective.test(text) && serverSdkImport.test(text)) {
+    return { block: `${path} is client code and imports @nozle-js/node, which reads the secret key; call a server route instead (on Node, createBillingHandler serves the React billing hooks)`, advice };
+  }
   if (backendPath && (backendPaths as readonly string[]).includes(backendPath) && !manifest.test(path)) {
     for (const [sdk, pattern] of Object.entries(serverSdks)) {
       if (sdk !== backendPath && pattern.test(text)) {
@@ -96,7 +102,7 @@ export function lintSource(path: string, text: string, backendPath?: string, { c
     advice.push(`${path}: a duplicate (409) is detected from the error text; check the status code instead`);
   }
   if (featureTrack.test(text) && (creditTrack.test(text) || llmWrapper.test(text))) {
-    advice.push(`${path}: calls track() next to ${creditTrack.test(text) ? "usage.track" : "an LLM wrapper"}; both bill, so make sure they never record the same action`);
+    advice.push(`${path}: calls track() next to ${creditTrack.test(text) ? "usage.track" : "an LLM wrapper or capture helper"}; both bill, so make sure they never record the same action`);
   }
   if (!conflictHandled && !testFile.test(path) && mentionsNozle.test(text) && usageCall.test(text) && !conflictStatus.test(text)) {
     advice.push(`${path}: sends usage but never checks for a 409 by status; log a 409 separately as a caller bug (the key was reused with a different body)`);

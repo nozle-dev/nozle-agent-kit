@@ -450,6 +450,7 @@ describe("records kept per service", () => {
   let workspace: string;
   beforeEach(() => {
     workspace = mkdtempSync(join(tmpdir(), "nozle-workspace-"));
+    mkdirSync(join(workspace, ".git"));
     mkdirSync(join(workspace, "backend", "src"), { recursive: true });
     writeFileSync(join(workspace, "backend", "nozle.integration.yaml"), YAML.stringify({
       schema: "nozle.integration", version: 1, selected_goals: [5], peers: [],
@@ -468,5 +469,17 @@ describe("records kept per service", () => {
 
   test("session start finds the service records below the workspace root", () => {
     expect(runHook("session-start", { cwd: workspace }).context).toContain("Nozle integration in progress");
+  });
+
+  test("a folder of separate repositories is not a workspace: records inside them are ignored", () => {
+    const parent = mkdtempSync(join(tmpdir(), "nozle-projects-"));
+    try {
+      mkdirSync(join(parent, "app", ".git"), { recursive: true });
+      writeFileSync(join(parent, "app", "nozle.integration.yaml"), YAML.stringify({ schema: "nozle.integration", version: 1, selected_goals: [10], peers: [] }));
+      expect(runHook("stop", { cwd: parent }).decision).toBe("allow");
+      expect(runHook("session-start", { cwd: parent }).context ?? "").not.toContain("Nozle integration in progress");
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
   });
 });
