@@ -14,6 +14,8 @@
 **Implement**
 - Call `nozle.checkout(customerId, planCode, returnUrl)` from the merchant backend. The result is a discriminated value (`stripe`, `razorpay`, `hosted`, `processing`, `completed`, `scheduled`); handle each variant, including `processing` and `scheduled`, and `completed` with `payment_source: saved_payment_method` (a saved card was charged in the same request). Return origin must be allowlisted by the merchant backend. Source: https://docs.nozle.dev/sdks/node/billing.md
 - An unpaid checkout expires after 23 hours: the pending subscription becomes `canceled` with `cancelation_reason: timeout` and `subscription.canceled` is sent, so the app must not keep it as pending forever. Checking out the same plan again reopens the open checkout; a different plan replaces it. A customer without an assigned provider connection gets 422 `payment_provider_required` (no fallback to another connection). 409 `checkout_in_progress` (a double submit) or `subscription_change_pending` means wait and re-read, not retry with a new key.
+- Assign the approved provider connection to each customer when the code creates it (Node `customers.upsert({ billingConfiguration: { paymentProviderCode } })`, REST `billing_configuration`). An organization with more than one connection, or a customer created before the connection existed, otherwise gets 422 `payment_provider_required` at checkout.
+- A customer's automatic free-plan subscription is not a paid plan: the upgrade route must accept a customer on the free plan.
 - Derive the customer from the authenticated server session, never from a browser-supplied ID.
 - Activate access only from authoritative payment confirmation (webhook or server-side status), never from the browser redirect.
 
