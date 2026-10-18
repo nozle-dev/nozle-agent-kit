@@ -16,6 +16,8 @@
 - An unpaid checkout expires after 23 hours: the pending subscription becomes `canceled` with `cancelation_reason: timeout` and `subscription.canceled` is sent, so the app must not keep it as pending forever. Checking out the same plan again reopens the open checkout; a different plan replaces it. A customer without an assigned provider connection gets 422 `payment_provider_required` (no fallback to another connection). 409 `checkout_in_progress` (a double submit) or `subscription_change_pending` means wait and re-read, not retry with a new key.
 - Assign the approved provider connection to each customer when the code creates it (Node `customers.upsert({ billingConfiguration: { paymentProviderCode } })`, REST `billing_configuration`). An organization with more than one connection, or a customer created before the connection existed, otherwise gets 422 `payment_provider_required` at checkout.
 - A customer's automatic free-plan subscription is not a paid plan: the upgrade route must accept a customer on the free plan.
+- Checkout status and verify work for a customer who has no subscription yet (a first purchase, a legacy customer moving over): scope them by what the customer has, and test that case.
+- The return URL's origin must be on the organization's allowlist, or checkout answers `invalid_return_url`: list it as a setup step.
 - Derive the customer from the authenticated server session, never from a browser-supplied ID.
 - Activate access only from authoritative payment confirmation (webhook or server-side status), never from the browser redirect.
 
