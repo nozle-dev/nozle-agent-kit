@@ -6,7 +6,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 
 import { isReadOnlyCheckCommand, runHook, shellWriteTargets } from "../src/hook.ts";
-import { reviewChecks } from "../src/record.ts";
+import { reviewChecks, testBackedChecks } from "../src/record.ts";
 
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 let root: string;
@@ -34,7 +34,7 @@ function writeRecord(overrides: Record<string, unknown> = {}) {
     ],
     decisions: [{ id: "goals", question: "Which goals?", answer: "5", basis: "user" }],
     peers: [],
-    self_review: Object.fromEntries(reviewChecks.map((check) => [check, { result: "pass", evidence: "src/a.ts:1" }])),
+    self_review: Object.fromEntries(reviewChecks.map((check) => [check, (testBackedChecks as readonly string[]).includes(check) ? { result: "not_applicable", evidence: "no such path" } : { result: "pass", evidence: "src/a.ts:1" }])),
     ...overrides,
   }));
 }
@@ -276,8 +276,21 @@ describe("build checks", () => {
     expect(runHook("stop", { cwd: root })).toEqual({ decision: "allow" });
   });
 
+  test("stop asks for the self-review once every planned file is written, even with tasks open", () => {
+    const file = join(root, "nozle.integration.yaml");
+    writeRecord();
+    const { self_review: _r, ...rest } = YAML.parse(readFileSync(file, "utf8"));
+    writeFileSync(file, YAML.stringify(rest));
+    expect(runHook("stop", { cwd: root })).toEqual({ decision: "allow" });
+    writeFileSync(join(root, "src/new.ts"), "export const x = 1;\n");
+    writeFileSync(file, YAML.stringify({ ...rest, source_files: [{ path: "src/a.ts", sha256: sha("one") }, { path: "src/new.ts", sha256: sha("export const x = 1;\n") }] }));
+    const blocked = runHook("stop", { cwd: root });
+    expect(blocked.decision).toBe("deny");
+    expect(blocked.reason).toContain("self_review is required");
+  });
+
   test("stop blocks once on a self_review marked fail", () => {
-    writeRecord({ self_review: { ...Object.fromEntries(reviewChecks.map((check) => [check, { result: "pass", evidence: "src/a.ts:1" }])), "shadow-writes": { result: "fail", evidence: "src/a.ts:1" } } });
+    writeRecord({ self_review: { ...Object.fromEntries(reviewChecks.map((check) => [check, (testBackedChecks as readonly string[]).includes(check) ? { result: "not_applicable", evidence: "no such path" } : { result: "pass", evidence: "src/a.ts:1" }])), "shadow-writes": { result: "fail", evidence: "src/a.ts:1" } } });
     const blocked = runHook("stop", { cwd: root });
     expect(blocked.decision).toBe("deny");
     expect(blocked.reason).toContain("shadow-writes");

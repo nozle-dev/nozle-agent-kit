@@ -388,7 +388,10 @@ function stop(root: string, input: HookInput): HookResult {
     findings.push(`Scoped files changed since the record was last updated: ${drifted.join(", ")}. Run the step's tests, then update task evidence and source_files hashes in ${recordName}.`);
   }
   // The handoff fields and the code checks are due at hand-off; a session on an older mid-build record is not turned into a rebuild.
-  const handoff = isHandoff(record);
+  // Every planned file is on disk: the code is written, so the hand-off checks apply even when the agent left tasks open.
+  const written = Boolean(record.approved_scope) &&
+    (record.source_files as ObjectValue[]).every((file) => existsSync(join(root, String(file.path))));
+  const handoff = isHandoff(record) || written;
   if (record.approved_scope) {
     const recordErrors = validateIntegrationRecord(record, { requireReview: handoff });
     if (recordErrors.length) findings.push(`${recordName} does not validate: ${recordErrors.join("; ")}.`);

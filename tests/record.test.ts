@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { assessResume, hasCredentialText, reviewChecks, validateIntegrationRecord, validateSetupPlan } from "../src/record.ts";
+import { assessResume, hasCredentialText, reviewChecks, testBackedChecks, validateIntegrationRecord, validateSetupPlan } from "../src/record.ts";
 
 const record = {
   schema: "nozle.integration",
@@ -24,7 +24,7 @@ const record = {
     { id: "charge-order", question: "Charge before or after the work?", answer: "After", basis: "user" },
   ],
   peers: [],
-  self_review: Object.fromEntries(reviewChecks.map((check) => [check, { result: "pass", evidence: "src/a.ts:1" }])),
+  self_review: Object.fromEntries(reviewChecks.map((check) => [check, (testBackedChecks as readonly string[]).includes(check) ? { result: "not_applicable", evidence: "no such path" } : { result: "pass", evidence: "src/a.ts:1" }])),
 };
 
 describe("credential text", () => {
@@ -77,6 +77,15 @@ describe("integration record", () => {
     const answered = { ...draft, decisions: [{ id: "goals", question: "Which goals?", answer: "10", basis: "user" }] };
     expect(validateIntegrationRecord(answered, { requireReview: false }).join(" ")).not.toContain('id "goals"');
     expect(validateIntegrationRecord({ ...record, decisions: [] }).join(" ")).toContain('decisions entry with id "goals"');
+  });
+
+  test("a test-backed check passes only with a scoped test named in its evidence", () => {
+    const withTest = { ...record, source_files: [...record.source_files, { path: "tests/dedupe.test.ts", sha256: "absent" }],
+      approved_scope: { ...record.approved_scope, included_paths: [...record.approved_scope.included_paths, "tests/dedupe.test.ts"] } };
+    const claimed = { ...withTest, self_review: { ...record.self_review, "dedupe-scope": { result: "pass", evidence: "src/a.ts:9 unique index" } } };
+    expect(validateIntegrationRecord(claimed)).toEqual(["self_review dedupe-scope is pass only with a test that drives that case, named in its evidence and listed in source_files"]);
+    const tested = { ...withTest, self_review: { ...record.self_review, "dedupe-scope": { result: "pass", evidence: "tests/dedupe.test.ts:12 three parallel requests charge once" } } };
+    expect(validateIntegrationRecord(tested)).toEqual([]);
   });
 
   test("requires every self_review check with a result and evidence at handoff, not on resume", () => {
@@ -267,7 +276,7 @@ describe("task dependencies in the record", () => {
     ],
     decisions: [{ id: "goals", question: "Which goals?", answer: "5", basis: "user" }],
     peers: [],
-    self_review: Object.fromEntries(reviewChecks.map((check) => [check, { result: "pass", evidence: "src/a.ts:1" }])),
+    self_review: Object.fromEntries(reviewChecks.map((check) => [check, (testBackedChecks as readonly string[]).includes(check) ? { result: "not_applicable", evidence: "no such path" } : { result: "pass", evidence: "src/a.ts:1" }])),
   });
 
   test("accepts ordered tasks", () => {
