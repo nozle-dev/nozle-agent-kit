@@ -292,6 +292,23 @@ describe("task dependencies in the record", () => {
     ]));
   });
 
+  test("a later phase waits until every earlier phase is completed", () => {
+    const record = base();
+    record.tasks = [
+      { id: "foundation", status: "pending", phase: 1 },
+      { id: "dms", status: "active", phase: 2 },
+    ] as never;
+    expect(validateIntegrationRecord(record)).toEqual(["task dms (phase 2) is active before phase 1 task foundation is completed"]);
+    record.tasks = [
+      { id: "foundation", status: "completed", phase: 1, evidence: "npm test: 12 passed" },
+      { id: "dms", status: "active", phase: 2 },
+      { id: "extra", status: "deferred", phase: 1, reason: "user moved it out" },
+    ] as never;
+    expect(validateIntegrationRecord(record)).toEqual([]);
+    record.tasks = [{ id: "foundation", status: "pending", phase: 0 }] as never;
+    expect(validateIntegrationRecord(record)).toEqual(["task foundation phase must be a whole number from 1"]);
+  });
+
   test("flags Nozle secret keys", () => {
     const record = base();
     record.tasks[0] = { id: "identity", status: "pending", note: "sk_nozle_abcdef123456" } as never;

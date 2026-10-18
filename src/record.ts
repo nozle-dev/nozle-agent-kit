@@ -255,6 +255,17 @@ export function validateIntegrationRecord(value: unknown, { requireReview = true
       if ((task.status === "failed" || task.status === "deferred") && !nonempty(task.reason)) {
         errors.push(`task ${task.id} needs a reason`);
       }
+      if (task.phase !== undefined && !(Number.isInteger(task.phase) && (task.phase as number) >= 1)) {
+        errors.push(`task ${task.id} phase must be a whole number from 1`);
+      }
+    }
+    // A phase starts only after every earlier phase is verified; a deferred task does not hold the next phase back.
+    const phased = record.tasks.map(object).filter((task): task is ObjectValue => Number.isInteger(task?.phase));
+    for (const task of phased) {
+      if (task.status !== "active" && task.status !== "completed") continue;
+      const open = phased.find((earlier) => (earlier.phase as number) < (task.phase as number) &&
+        earlier.status !== "completed" && earlier.status !== "deferred");
+      if (open) errors.push(`task ${task.id} (phase ${task.phase}) is ${task.status} before phase ${open.phase} task ${open.id} is completed`);
     }
   }
 
