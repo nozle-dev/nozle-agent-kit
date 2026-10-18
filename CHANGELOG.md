@@ -21,7 +21,33 @@ Each release raises the version in every manifest (`bun scripts/release.ts <vers
   - **Checkout and top-ups:** an unpaid checkout expires after 23 hours, and top-up credits are granted only once the invoice is fully paid.
   - **`can()`:** `limit` and `remaining` are `null` when there is no cap, and economics needs the summed field for a sum Feature. Margin reads honour only `from` and `to`.
 
+### Added
+- **Build in phases.** The approved scope is split into small phases in dependency order:
+  1. the foundation;
+  2. the service that holds the key, one billed path at a time;
+  3. each other service;
+  4. the frontend;
+  5. rollout.
+
+  Each phase runs its approved tests, lint and type check, fixes what fails, records the results, and is committed locally (never pushed) before the next phase starts. Tasks carry a `phase` number, and the record refuses a later phase while an earlier one is open.
+- **Self-review backed by tests.** `dedupe-scope`, `legacy-gates`, `next-period` and `denial-after-work` pass only with a test that drives that case, named in the evidence. The cases are 3 parallel requests with one key, enforce with only Nozle credits, a period end in the past, and a denial after the work.
+- **A new check, `peer-contract`:** a call between two services is tested against the provider's real route.
+- **Rules from live end-to-end runs with real Stripe and Razorpay test payments:**
+  - assign the payment connection when the customer is created;
+  - verify works for a customer's first purchase;
+  - list a transition policy for each pair of paid plans;
+  - put the return-URL allowlist in the setup plan;
+  - build a cancel route;
+  - handle webhooks one customer at a time, re-read the object, use the documented field names, and prefer HMAC signing on Node;
+  - read only response fields that exist;
+  - test the charge path once against a real database;
+  - give each service its own settle queue;
+  - never cache a missed customer lookup;
+  - name the code line that carries out each recorded decision;
+  - make switching back from enforce safe.
+
 ### Fixed
+- **The self-review was skipped when tasks stayed open.** The Stop guard now treats a record whose planned files all exist as handed off, so the self-review and the code checks run.
 - **A false Stop block from old records:** the scan for nested service records now stays inside one git repository and skips nested repositories.
 - **Renewal check in shadow mode:** the renewal rule no longer relies on `usage.check` where Nozle holds no credits.
 - **Cost events:** the parent of a cost event must be a usage event that was actually sent.
