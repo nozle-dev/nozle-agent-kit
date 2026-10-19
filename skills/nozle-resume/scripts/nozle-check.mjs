@@ -8088,9 +8088,11 @@ var reviewChecks = [
   "cost-event-id",
   "denial-after-work",
   "limit-source",
-  "peer-contract"
+  "peer-contract",
+  "fake-refusals",
+  "step-isolation"
 ];
-var testBackedChecks = ["dedupe-scope", "legacy-gates", "next-period", "denial-after-work"];
+var testBackedChecks = ["dedupe-scope", "legacy-gates", "next-period", "denial-after-work", "fake-refusals", "step-isolation"];
 var testPath = /(?:^|\/)(?:tests?|__tests__|spec)\/|[._-](?:test|spec)\.[a-z]+$|(?:^|\/)test_[^/]+\.py$|_test\.go$/;
 var reviewResults = new Set(["pass", "fail", "not_applicable"]);
 var setupStatuses = new Set(["manual_pending", "code_written", "code_verified", "awaiting_activation", "live_observed"]);

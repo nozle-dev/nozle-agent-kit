@@ -13,13 +13,13 @@ export const reviewChecks = [
   "identity-lookup", "legacy-gates", "nullable-fields", "one-clock", "denial-retry", "claim-after-fulfil", "status-reader",
   "codes-exist", "lint-clean", "charge-parity", "shadow-seed",
   "dedupe-scope", "route-coverage", "seed-before-read", "next-period", "cost-event-id", "denial-after-work", "limit-source",
-  "peer-contract",
+  "peer-contract", "fake-refusals", "step-isolation",
 ] as const;
 /**
  * Checks that live tests failed while the agent's own review said pass: a pass needs a test that drives the case,
  * named in the evidence and listed in source_files, because reading the code was not enough.
  */
-export const testBackedChecks = ["dedupe-scope", "legacy-gates", "next-period", "denial-after-work"] as const;
+export const testBackedChecks = ["dedupe-scope", "legacy-gates", "next-period", "denial-after-work", "fake-refusals", "step-isolation"] as const;
 // The test file conventions of the stacks the plugin supports (JS/TS, Python, Go).
 const testPath = /(?:^|\/)(?:tests?|__tests__|spec)\/|[._-](?:test|spec)\.[a-z]+$|(?:^|\/)test_[^/]+\.py$|_test\.go$/;
 const reviewResults = new Set(["pass", "fail", "not_applicable"]);

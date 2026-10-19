@@ -32,6 +32,14 @@ Each release raises the version in every manifest (`bun scripts/release.ts <vers
   Each phase runs its approved tests, lint and type check, fixes what fails, records the results, and is committed locally (never pushed) before the next phase starts. Tasks carry a `phase` number, and the record refuses a later phase while an earlier one is open.
 - **Self-review backed by tests.** `dedupe-scope`, `legacy-gates`, `next-period` and `denial-after-work` pass only with a test that drives that case, named in the evidence. The cases are 3 parallel requests with one key, enforce with only Nozle credits, a period end in the past, and a denial after the work.
 - **A new check, `peer-contract`:** a call between two services is tested against the provider's real route.
+- **Two new test-backed checks from the first fix round:**
+  - **`fake-refusals`:** test fakes return the documented refusals, not success. Each call the code makes has a test where the fake refuses it and the code handles the refusal. A fake that accepted a cancel Nozle always refuses hid a renewal bug.
+  - **`step-isolation`:** a sync or settle job saves each step that succeeded, even when a later call fails, and moves on to the next customer.
+- **Broader rules:**
+  - events are stored before they are handed to the next hop, not only before Nozle;
+  - the check runs before any paid provider call;
+  - every recorded debt has a collector when credits arrive;
+  - a subscription billed outside Nozle is ended or changed in the app's gate, never through Nozle.
 - **Rules from live end-to-end runs with real Stripe and Razorpay test payments:**
   - assign the payment connection when the customer is created;
   - verify works for a customer's first purchase;
