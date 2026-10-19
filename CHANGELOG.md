@@ -40,6 +40,9 @@ Each release raises the version in every manifest (`bun scripts/release.ts <vers
   - the check runs before any paid provider call;
   - every recorded debt has a collector when credits arrive;
   - a subscription billed outside Nozle is ended or changed in the app's gate, never through Nozle.
+  - billing state is never imported again to move a period or change a plan, and an unsupported plan change is reported as a gap;
+  - every Nozle queue (usage and cost events) has a name unique to its service;
+  - each new runtime dependency (a queue, cache, cron or worker) is a setup step.
 - **Rules from live end-to-end runs with real Stripe and Razorpay test payments:**
   - assign the payment connection when the customer is created;
   - verify works for a customer's first purchase;
