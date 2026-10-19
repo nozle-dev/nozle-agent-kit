@@ -17,7 +17,7 @@ Whenever you need the user to choose or approve something, use the host's questi
 4. **Run the checks.** For each, give a verdict (`pass`, `fail`, `unverified`) with evidence:
    - Configuration-to-code mapping: every feature, meter, or plan code in code exists in the account, and the reverse for what the record says was integrated.
    - Usage: one event per successful billable operation; a transaction ID and idempotency key built from a business or request id (not a per-attempt random id) and a fixed timestamp across retries; a 409 checked by status, not message text; no duplicate emission from a wrapper plus a manual call; a stream billed on provider finish even when the client aborts, with usage recorded before the final chunk.
-   - Subscriptions: no paid subscription without checkout or confirmed payment; exactly one code path creates subscriptions; with external billing, one import per subscription with a stable reference and the app's own paid status checked before each usage call.
+   - Subscriptions: no paid subscription without checkout or confirmed payment; exactly one code path creates subscriptions; no external billing imports (billing-state or opening-balance); renewals, plan changes and cancellations go through Nozle, and the app follows them from webhooks and reads.
    - Stack: the SDK and runtime in use match `stack` in the record and `nozle-check env`.
    - Exclusions: free and excluded callers of a shared client emit no billable usage (confirm by running a mock or fixture test).
    - Cost coverage: provider calls with a cost meter code have a rate in the account's Cost Sheet; unknown rates are reported as uncosted.

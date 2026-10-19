@@ -5,6 +5,7 @@ Each release raises the version in every manifest (`bun scripts/release.ts <vers
 ## [1.0.4] - 2026-10-18
 
 ### Changed
+- **Billing only through what Nozle offers.** Payments, subscriptions, renewals, plan changes and credit grants go through Nozle checkout and Nozle subscriptions, with a provider Nozle documents. The agent no longer plans external billing imports that leave another provider billing next to Nozle: it offers to move that job to a supported provider, or to leave it out of the integration. Choice 10 is now **Move my existing billing to Nozle**.
 - **Rules follow the current SDKs:** `@nozle-js/node` 0.13, `@nozle-js/react` 0.11 and 0.12, `nozle-sdk` 0.13 and `nozle-go` v0.12. Version-specific rules name the minimum version, so integrations on older packages keep working.
   - **LLM capture beyond OpenAI and Anthropic.** On Node, the agent uses `captureFetch` for any client that accepts a custom `fetch`: the Vercel AI SDK, LangChain, Gemini, OpenAI-compatible APIs and raw `fetch`. On Python and Go it captures through the provider's HTTP client. LiteLLM is captured only when its HTTP client is routed through Nozle's. Manual tracking is kept for everything else.
   - **Errors by type:** every Node call now throws `NozleApiError`, so a 409 is read from `status` or `hasCode()`, never from the message. The request id is logged with every failure. The Python and Go error types are listed too.
@@ -15,7 +16,7 @@ Each release raises the version in every manifest (`bun scripts/release.ts <vers
   - **`NOZLE_SECRET_KEY`** is the variable name in `.env.example` (the SDKs read it by default).
 - **Rules follow the current server contracts:**
   - **Events:** events and cost events go to Engine. An event that matches no active subscription, or several, is refused with 422 (`active_subscription_not_found`, `active_subscription_ambiguous`), so the subscription is passed whenever a customer can have more than one.
-  - **Error codes:** state refusals are 422, not 405, and conflicts are 409. An externally billed subscription refuses cancellation with `externally_billed_subscription`, and a billing-state import replay answers with `replayed: true`.
+  - **Error codes:** state refusals are 422, not 405, and conflicts are 409.
   - **Plan families:** one pricing card per visible family, and entitlements apply to the whole family.
   - **Plan changes:** `change_at` on every plan change. An immediate change with an amount due is paid first (`payment_required`).
   - **Checkout and top-ups:** an unpaid checkout expires after 23 hours, and top-up credits are granted only once the invoice is fully paid.

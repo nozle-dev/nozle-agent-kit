@@ -25,7 +25,7 @@ No capability works alone. When the user names one thing ("add credits", "track 
 | 7 | Costs and margins | Usage attribution per customer and feature (5, or cost events with the customer id); cost meters and a published Cost Sheet with rates for each provider and model; the cost composition per feature; manual reporting where no auto-capture exists |
 | 8 | Customer billing dashboard | Backend routes that return the customer's own plan, usage, credits and invoices (on Node with React, one `createBillingHandler` route serves every React billing hook; the customer comes only from the session); 1, 3 and 4 data as needed; React components or native screens |
 | 9 | Billing and data sync | A webhook endpoint registered in the dashboard; signature verification; deduplication and out-of-order handling; a mapping from Nozle customers and subscriptions to application records |
-| 10 | Existing billing setup | An ownership map (who owns customers, payments and subscriptions after the change); for an externally billed product, one billing-state import per subscription with a stable reference and, for credits, the opening balance after it; the application's own paid-status check before each usage call |
+| 10 | Move existing billing to Nozle | An ownership map (who owns customers, payments and subscriptions during and after the move); a supported provider connection; a migration plan per existing subscriber (checkout at the next renewal or now); a drain for existing app balances |
 
 ## Ask for one thing, get the whole chain
 

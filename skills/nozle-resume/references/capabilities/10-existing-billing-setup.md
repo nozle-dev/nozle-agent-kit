@@ -1,23 +1,23 @@
-# 10. Connect Nozle to my existing billing setup
+# 10. Move my existing billing to Nozle
 
-**Covers:** selective adoption with explicit ownership boundaries.
+**Covers:** moving customers, subscribers and balances from the product's current billing to Nozle checkout and Nozle subscriptions, with explicit ownership boundaries during the move.
 **Account needs:** `plans` and `payment_connection`, as the chosen scope requires.
 **Shared prerequisites:** `customer_identity`, `server_key`.
 
 **Decide with the user**
-- `ownership`: for each customer, payment, and subscription, which system owns it today and after the change.
-- `overlap`: what happens where both systems could act (never charge twice).
-- `migration-scope`: new customers only, selected plans, or everything.
+- `ownership`: for each customer, payment, and subscription, which system owns it today and after the move.
+- `overlap`: what happens while both systems exist (never charge twice).
+- `migration-scope`: new customers only, selected plans, or everything, and when each existing subscriber moves (at their next renewal, or now).
 
 **Implement**
-- When the existing provider stays and Nozle does not support it, use external billing authority: import each active subscription with `POST /customers/{id}/billing-state-imports` (`billing_authority: external`, secret key, idempotency key; the period spans exactly one plan interval and contains now) and record the opening credit balance (plan allowance, amount consumed, remaining) so a cutover does not grant twice. Nozle then excludes those subscriptions from invoicing, upgrades, cancellation and dunning, while entitlements, `can()`, usage tracking, credits and costs work. Collection, renewals, refunds and dunning stay with the existing provider. Sources: https://docs.nozle.dev/api/import-billing-state and https://docs.nozle.dev/api/import-opening-credit-balance
-- Verified behaviors to plan around: a subscription imported with external billing authority gets no plan grant until its opening balance is imported, so import it for every subscription, not only in a one-time cutover; the period must be whole plan intervals (a 30-day window is rejected for a monthly plan); importing the same external reference again with a different period returns 422 with `subscription: [already_exists]` (the same reference, body and idempotency key replays with 200 and `replayed: true`), a new reference creates a second subscription, which makes `usage.track` fail with 422 `active_subscription_ambiguous` (usage has no subscription field), so never import one per period: after the opening balance import the Engine issues each later grant period by itself (observed live; see `next-period` in financial-rules.md); an externally billed subscription cannot be cancelled (422 `externally_billed_subscription`), updated or moved to another plan, and its grants keep renewing, so the application checks its own paid status before each usage call and handles cancellation and plan changes itself; and the application's own balance needs its own idempotency on a replayed operation id, because Nozle's key protects only Nozle's side.
-- On a renewal or restart, look up the existing billing-state import or replay it with the original body and key (a dry run with the same key returns the completed import); never reuse a key with a new body.
-- Ask whether the user also wants to replace the provider; see the provider question in capability 2. Never assume it.
-- Preserve the existing system's behavior and ownership for anything not explicitly moved.
-- Add Nozle alongside it for the chosen scope only, behind a clear switch the application controls.
-- Mirror, do not duplicate: one system activates access, the other reports.
+- Nozle bills through the providers it documents, read from the docs MCP at run time. A product on another provider moves to one of them through Nozle checkout, with the user's explicit yes and the provider connection added in the dashboard; see the provider question in capability 2. Never assume it.
+- The plugin does not use external billing authority (`billing-state-imports` with `billing_authority: external`, opening-balance imports). Nozle cannot renew, change or cancel such a subscription, so the app would keep a second billing engine.
+- Existing customers: create or upsert each one with its stable id and the approved provider connection (Node `customers.upsert({ billingConfiguration })`; on the same provider account, link its existing provider customer so stored payment methods carry over).
+- Existing subscribers: each one moves to a Nozle subscription through checkout (or a saved payment method where the provider and the docs support it), at the point the user chose. Until then the old system keeps billing that subscriber, and Nozle bills none of their usage. Subscriptions are not migrated automatically.
+- Existing app balances: drain them (see "Replacing an existing app balance" in financial-rules.md); Nozle-billed balances have no import.
+- After the move, Nozle owns renewals, plan changes, cancellations, dunning and grants, and the app follows Nozle's state through webhooks and reads.
+- Preserve the existing system's behavior for anything and anyone not yet moved, behind a switch the application controls.
 
-**Verify (local only):** a customer in the existing system is untouched; a customer in the new scope is billed once; a switch back leaves no double charge.
+**Verify (local only):** a customer not yet moved is untouched; a moved customer is billed once, by Nozle; a switch back leaves no double charge.
 
-**Do not:** replace payment or subscription logic that was not selected, or run both systems against the same charge.
+**Do not:** run both systems against the same charge, or move a subscriber without the user's approved migration plan.

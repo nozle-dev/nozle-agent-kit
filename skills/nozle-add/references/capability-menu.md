@@ -13,7 +13,7 @@ This is the full list; the labels and numbers are fixed. Show only the choices t
 | 7 | Track costs and margins | Provider costs, Cost Sheets, and reporting. |
 | 8 | Build a customer billing dashboard | Plans, invoices, subscriptions, usage, credits, and payments. |
 | 9 | Keep billing and application data in sync | Webhooks, deduplication, and reconciliation. |
-| 10 | Connect Nozle to my existing billing setup | Selective adoption with explicit ownership boundaries. |
+| 10 | Move my existing billing to Nozle | Customers, subscribers and balances move to Nozle checkout and subscriptions, with explicit ownership during the move. |
 
 Also offer: help me choose, audit an integration, continue previous work, explain a Nozle capability, and connect/change the Nozle organization.
 
