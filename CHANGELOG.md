@@ -2,6 +2,74 @@
 
 Each release raises the version in every manifest (`bun scripts/release.ts <version>`). Claude Code and Codex cache an installed plugin by version, so a change shipped without a new version doesn't reach anyone who already installed it.
 
+## [1.0.4] - 2026-10-18
+
+### Changed
+- **Billing only through what Nozle offers.** Payments, subscriptions, renewals, plan changes and credit grants go through Nozle checkout and Nozle subscriptions, with a provider Nozle documents. The agent no longer plans external billing imports that leave another provider billing next to Nozle: it offers to move that job to a supported provider, or to leave it out of the integration. Choice 10 is now **Move my existing billing to Nozle**.
+- **Rules follow the current SDKs:** `@nozle-js/node` 0.13, `@nozle-js/react` 0.11 and 0.12, `nozle-sdk` 0.13 and `nozle-go` v0.12. Version-specific rules name the minimum version, so integrations on older packages keep working.
+  - **LLM capture beyond OpenAI and Anthropic.** On Node, the agent uses `captureFetch` for any client that accepts a custom `fetch`: the Vercel AI SDK, LangChain, Gemini, OpenAI-compatible APIs and raw `fetch`. On Python and Go it captures through the provider's HTTP client. LiteLLM is captured only when its HTTP client is routed through Nozle's. Manual tracking is kept for everything else.
+  - **Errors by type:** every Node call now throws `NozleApiError`, so a 409 is read from `status` or `hasCode()`, never from the message. The request id is logged with every failure. The Python and Go error types are listed too.
+  - **Retries and timestamps:** SDK retries are opt-in. A repeated key reuses its timestamp only on the same client, so a retry from a queue still passes the stored timestamp.
+  - **Async Python:** `AsyncNozle` under async frameworks.
+  - **Billing screens:** on Node with React, one `createBillingHandler` route serves the React billing hooks. React 0.11 needs `@tanstack/react-query` v5 and is themed with `appearance`, not Tailwind.
+  - **Webhooks:** the SDK verification helpers are used, plus the documented signing contract: Base64 HMAC-SHA256 or RS256 JWT, deduplication on `X-Nozle-Unique-Key`, and only 3 delivery attempts, so a reconciliation job is planned.
+  - **`NOZLE_SECRET_KEY`** is the variable name in `.env.example` (the SDKs read it by default).
+- **Rules follow the current server contracts:**
+  - **Events:** events and cost events go to Engine. An event that matches no active subscription, or several, is refused with 422 (`active_subscription_not_found`, `active_subscription_ambiguous`), so the subscription is passed whenever a customer can have more than one.
+  - **Error codes:** state refusals are 422, not 405, and conflicts are 409.
+  - **Plan families:** one pricing card per visible family, and entitlements apply to the whole family.
+  - **Plan changes:** `change_at` on every plan change. An immediate change with an amount due is paid first (`payment_required`).
+  - **Checkout and top-ups:** an unpaid checkout expires after 23 hours, and top-up credits are granted only once the invoice is fully paid.
+  - **`can()`:** `limit` and `remaining` are `null` when there is no cap, and economics needs the summed field for a sum Feature. Margin reads honour only `from` and `to`.
+
+### Added
+- **Build in phases.** The approved scope is split into small phases in dependency order:
+  1. the foundation;
+  2. the service that holds the key, one billed path at a time;
+  3. each other service;
+  4. the frontend;
+  5. rollout.
+
+  Each phase runs its approved tests, lint and type check, fixes what fails, records the results, and is committed locally (never pushed) before the next phase starts. Tasks carry a `phase` number, and the record refuses a later phase while an earlier one is open.
+- **Self-review backed by tests.** `dedupe-scope`, `legacy-gates`, `next-period` and `denial-after-work` pass only with a test that drives that case, named in the evidence. The cases are 3 parallel requests with one key, enforce with only Nozle credits, a period end in the past, and a denial after the work.
+- **A new check, `peer-contract`:** a call between two services is tested against the provider's real route.
+- **Two new test-backed checks from the first fix round:**
+  - **`fake-refusals`:** test fakes return the documented refusals, not success. Each call the code makes has a test where the fake refuses it and the code handles the refusal. A fake that accepted a cancel Nozle always refuses hid a renewal bug.
+  - **`step-isolation`:** a sync or settle job saves each step that succeeded, even when a later call fails, and moves on to the next customer.
+- **Broader rules:**
+  - events are stored before they are handed to the next hop, not only before Nozle;
+  - the check runs before any paid provider call;
+  - every recorded debt has a collector when credits arrive;
+  - a subscription billed outside Nozle is ended or changed in the app's gate, never through Nozle.
+  - billing state is never imported again to move a period or change a plan, and an unsupported plan change is reported as a gap;
+  - every Nozle queue (usage and cost events) has a name unique to its service;
+  - each new runtime dependency (a queue, cache, cron or worker) is a setup step.
+- **Rules from live end-to-end runs with real Stripe and Razorpay test payments:**
+  - assign the payment connection when the customer is created;
+  - verify works for a customer's first purchase;
+  - list a transition policy for each pair of paid plans;
+  - put the return-URL allowlist in the setup plan;
+  - build a cancel route;
+  - handle webhooks one customer at a time, re-read the object, use the documented field names, and prefer HMAC signing on Node;
+  - read only response fields that exist;
+  - test the charge path once against a real database;
+  - give each service its own settle queue;
+  - never cache a missed customer lookup;
+  - name the code line that carries out each recorded decision;
+  - make switching back from enforce safe.
+
+### Fixed
+- **The self-review was skipped when tasks stayed open.** The Stop guard now treats a record whose planned files all exist as handed off, so the self-review and the code checks run.
+- **A false Stop block from old records:** the scan for nested service records now stays inside one git repository and skips nested repositories.
+- **Renewal check in shadow mode:** the renewal rule no longer relies on `usage.check` where Nozle holds no credits.
+- **Cost events:** the parent of a cost event must be a usage event that was actually sent.
+- **Guards:**
+  - a client file that imports `@nozle-js/node` is now blocked;
+  - `captureFetch`, `recordUsage` and the Python and Go capture helpers count as LLM wrappers in the double-billing check;
+  - `costEvents.track` no longer counts as a billing call;
+  - `hasCode("idempotency_key_reused")` counts as handling a 409.
+- **Existing-integration scan:** it now finds capture helpers, Go cost events and `createBillingHandler`.
+
 ## [1.0.3] - 2026-10-13
 
 ### Fixed

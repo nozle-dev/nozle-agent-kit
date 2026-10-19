@@ -13,7 +13,15 @@ export const reviewChecks = [
   "identity-lookup", "legacy-gates", "nullable-fields", "one-clock", "denial-retry", "claim-after-fulfil", "status-reader",
   "codes-exist", "lint-clean", "charge-parity", "shadow-seed",
   "dedupe-scope", "route-coverage", "seed-before-read", "next-period", "cost-event-id", "denial-after-work", "limit-source",
+  "peer-contract", "fake-refusals", "step-isolation",
 ] as const;
+/**
+ * Checks that live tests failed while the agent's own review said pass: a pass needs a test that drives the case,
+ * named in the evidence and listed in source_files, because reading the code was not enough.
+ */
+export const testBackedChecks = ["dedupe-scope", "legacy-gates", "next-period", "denial-after-work", "fake-refusals", "step-isolation"] as const;
+// The test file conventions of the stacks the plugin supports (JS/TS, Python, Go).
+const testPath = /(?:^|\/)(?:tests?|__tests__|spec)\/|[._-](?:test|spec)\.[a-z]+$|(?:^|\/)test_[^/]+\.py$|_test\.go$/;
 const reviewResults = new Set(["pass", "fail", "not_applicable"]);
 const setupStatuses = new Set(["manual_pending", "code_written", "code_verified", "awaiting_activation", "live_observed"]);
 const forbiddenKey = /(^|_)(api_?key|secret|password|credential|access_?token|refresh_?token|auth_?token|api_?token|session_?token|id_?token|bearer_?token|client_?token|token|authorization|private_?key)(_|$)/i;
@@ -75,7 +83,8 @@ export function yamlProblem(error: unknown): string {
 /**
  * A record is at hand-off once a self-review exists or every task is done. Before that it is mid-build and is checked as
  * resume does, so an older record that predates a handoff field can still be resumed.
- * shortcut: a build that ends with tasks open and no self_review is not forced to write one; the integrate skill asks for it.
+ * The Stop guard also treats a record as handed off once every planned file exists on disk (hook.ts), so a build that
+ * leaves its tasks open still gets the self-review.
  */
 export function isHandoff(value: unknown): boolean {
   const record = value as Record<string, unknown> | null;
@@ -246,6 +255,17 @@ export function validateIntegrationRecord(value: unknown, { requireReview = true
       if ((task.status === "failed" || task.status === "deferred") && !nonempty(task.reason)) {
         errors.push(`task ${task.id} needs a reason`);
       }
+      if (task.phase !== undefined && !(Number.isInteger(task.phase) && (task.phase as number) >= 1)) {
+        errors.push(`task ${task.id} phase must be a whole number from 1`);
+      }
+    }
+    // A phase starts only after every earlier phase is verified; a deferred task does not hold the next phase back.
+    const phased = record.tasks.map(object).filter((task): task is ObjectValue => Number.isInteger(task?.phase));
+    for (const task of phased) {
+      if (task.status !== "active" && task.status !== "completed") continue;
+      const open = phased.find((earlier) => (earlier.phase as number) < (task.phase as number) &&
+        earlier.status !== "completed" && earlier.status !== "deferred");
+      if (open) errors.push(`task ${task.id} (phase ${task.phase}) is ${task.status} before phase ${open.phase} task ${open.id} is completed`);
     }
   }
 
@@ -269,10 +289,16 @@ export function validateIntegrationRecord(value: unknown, { requireReview = true
     if (!review) {
       errors.push(`self_review is required for a handoff record: ${reviewChecks.join(", ")}`);
     } else {
+      const tests = Array.isArray(record.source_files)
+        ? record.source_files.map((raw) => String(object(raw)?.path ?? "")).filter((path) => testPath.test(path))
+        : [];
       for (const check of reviewChecks) {
         const item = object(review[check]);
         if (!item || !reviewResults.has(String(item.result)) || !nonempty(item.evidence)) {
           errors.push(`self_review ${check} needs result (pass, fail or not_applicable) and evidence`);
+        } else if (item.result === "pass" && (testBackedChecks as readonly string[]).includes(check) &&
+            !tests.some((path) => String(item.evidence).includes(path))) {
+          errors.push(`self_review ${check} is pass only with a test that drives that case, named in its evidence and listed in source_files`);
         }
       }
     }

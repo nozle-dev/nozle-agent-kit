@@ -26,6 +26,23 @@ describe("lintSource", () => {
     expect(lintSource("a.ts", "track(x, { idempotencyKey: `job:${job.id}:${item.id}` })").notes).toBeUndefined();
   });
 
+  test("blocks a value import of the server SDK in client code", () => {
+    expect(lintSource("a.tsx", '"use client";\nimport { Nozle } from "@nozle-js/node";').block).toContain("imports @nozle-js/node");
+    expect(lintSource("a.tsx", '"use client";\nimport type { CanResult } from "@nozle-js/node";').block).toBeUndefined();
+    expect(lintSource("route.ts", 'import { Nozle } from "@nozle-js/node";').block).toBeUndefined();
+  });
+
+  test("a 409 checked with hasCode counts as handled", () => {
+    const text = 'import { Nozle } from "@nozle-js/node";\nawait nozle.usage.track(input, { idempotencyKey: k });\nif (err.hasCode("idempotency_key_reused")) log(err);';
+    expect(lintSource("a.ts", text).advice.some((line) => line.includes("409"))).toBe(false);
+  });
+
+  test("capture helpers count as wrappers, cost events do not bill", () => {
+    expect(lintSource("a.ts", "const f = nozle.captureFetch({ customerId });\nawait nozle.track(c, e);").advice[0]).toContain("capture helper");
+    expect(lintSource("a.py", "client = nozle.wrap_http_client(http, customer_id=uid)\nnozle.track(c, e)").advice[0]).toContain("capture helper");
+    expect(lintSource("a.ts", "await nozle.usage.track(input, { idempotencyKey: k });\nawait nozle.costEvents.track(cost);").advice.some((line) => line.includes("both bill"))).toBe(false);
+  });
+
   test("advises on a 409 found by error text, not by status", () => {
     expect(lintSource("a.ts", 'if (err.message.includes("409")) return;').advice).toHaveLength(1);
     expect(lintSource("a.py", 'if "already" in str(e): pass').advice).toHaveLength(1);

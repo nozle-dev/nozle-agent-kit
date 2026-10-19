@@ -14,8 +14,8 @@
 **Implement**
 - Consume with `nozle.usage.track(input, { idempotencyKey })`: atomic, and the same key and payload must be reused on a retry. `nozle.usage.check(...)` is advisory only. Source: https://docs.nozle.dev/sdks/node/credits.md and https://docs.nozle.dev/guides/credits/usage-tracking.md
 - Ask the charge-order question for any action that can fail after it starts (charge first, or check then charge on success); see "Build traps". Act on `allowed: false` in both orders.
-- Build the idempotency key from a business id, not a per-attempt random id. When the app already holds balances, plan off, shadow and enforce plus an opening-balance import; see "Build traps" in financial-rules.md.
-- Paid top-ups are fixed packages; checkout creation does not grant credits, which arrive after confirmed payment. Source: https://docs.nozle.dev/guides/credits/top-ups.md
+- Build the idempotency key from a business id, not a per-attempt random id. When the app already holds balances, plan off, shadow and enforce plus a drain of the existing balance; see "Build traps" in financial-rules.md.
+- Paid top-ups are fixed packages; checkout creation does not grant credits, which arrive when the top-up invoice is fully paid (by any payment route; a partial payment grants nothing). Source: https://docs.nozle.dev/guides/credits/top-ups.md
 - Entity allocation moves eligible purchased credits; subscription grants are not transferable. A shared fallback does not enforce an unreserved per-member cap. Source: https://docs.nozle.dev/guides/credits/entities.md
 - Keep credit amounts as exact decimal strings.
 
