@@ -2,6 +2,11 @@
 
 Each release raises the version in every manifest (`bun scripts/release.ts <version>`). Claude Code and Codex cache an installed plugin by version, so a change shipped without a new version doesn't reach anyone who already installed it.
 
+## [1.0.5] - 2026-10-27
+
+### Changed
+- **Stripe checkout is hosted only** (Core 11.4.0, Engine 2.12.0). The agent redirects the buyer to the `url` of a `hosted` checkout result, never loads Stripe.js or a Stripe publishable key on the merchant page, and may pass `cancel_url`. The `stripe` result type and `client_secret` are gone. `@nozle-js/react` no longer needs the `@stripe/*` peers, so the stack rules and the environment check stop listing them.
+
 ## [1.0.4] - 2026-10-18
 
 ### Changed
