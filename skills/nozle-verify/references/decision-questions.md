@@ -14,7 +14,7 @@ When the user names an outcome ("track usage for the chatbot", "add Razorpay che
    - leave that job out of this integration: the current setup keeps it, and Nozle billing does not touch it (no paid-plan subscriptions or credits in Nozle for it), while Nozle can still track usage and costs.
    The move is the recommended option even when it is the larger change; name the documented provider that fits the product's currency and market. Never offer a provider the docs do not document as a Nozle option (for example "keep it and treat it as unverified"). Never plan a move without the explicit yes. A move is its own scope item with a migration and a rollback.
 3. **When the product has no provider yet**, or the user chose replace, the options are the providers in both lists: those the docs MCP documents with a checkout guide, and those connected in the account read. A provider the docs support but the account lacks becomes a dashboard step; a connected provider without a guide is `unverified`, say so. Never offer a provider from memory.
-4. Facts that differ per provider (currency, hosted versus embedded results, webhook setup, refunds) come from that provider's guide in the docs MCP at run time, and the plan states them.
+4. Facts that differ per provider (currency, hosted versus modal results, webhook setup, refunds) come from that provider's guide in the docs MCP at run time, and the plan states them.
 
 ## What to measure: one decision per activity
 

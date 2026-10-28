@@ -7261,7 +7261,7 @@ function detectEnvironment(files) {
   const native = [...frameworks].filter((f) => FRONTEND_NATIVE.has(f));
   if (hasReact) {
     frontend.path = "react-sdk";
-    frontend.reasons.push("React: `@nozle-js/react` (React >= 18; peers `@stripe/stripe-js`, `@stripe/react-stripe-js` and, from 0.11, `@tanstack/react-query` v5; themed with `appearance`, not Tailwind; publishable key only, customer billing goes through your backend)");
+    frontend.reasons.push("React: `@nozle-js/react` (React >= 18; from 0.11 peer `@tanstack/react-query` v5, no `@stripe/*` packages; themed with `appearance`, not Tailwind; publishable key only, customer billing goes through your backend)");
     const major = Number(/(\d+)/.exec(String(nodeDeps["react"] ?? ""))?.[1]);
     if (major && major < 18)
       frontend.reasons.push(`React ${major} is below the SDK minimum of 18`);
