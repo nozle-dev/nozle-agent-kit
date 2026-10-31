@@ -29,6 +29,20 @@ describe("scanNozleUsage", () => {
     expect(by[5]).toMatchObject({ file: "src/ai.ts", line: 2 });
     expect(by[8]).toMatchObject({ file: "src/api/billing.ts" });
   });
+  test("finds event buffers and credit holds", () => {
+    const by = Object.fromEntries(scanNozleUsage({
+      "src/meter.ts": 'import { Nozle } from "@nozle-js/node";\nconst buffer = nozle.createEventBuffer({ onError });',
+      "agent.go": 'import "github.com/nozle-dev/nozle-go"\nhold, err := client.CreateCreditHold(ctx, p, key)',
+    }).rows.map((row) => [row.capability, row.hits[0]]));
+    expect(by[5]).toMatchObject({ file: "src/meter.ts", line: 2 });
+    expect(by[4]).toMatchObject({ file: "agent.go", line: 2 });
+  });
+  test("finds budget reads and refusals", () => {
+    const by = Object.fromEntries(scanNozleUsage({
+      "app/limits.py": "from nozle import Nozle, RefusalReason\nbudgets = client.budgets.list(customer_id)",
+    }).rows.map((row) => [row.capability, row.hits[0]]));
+    expect(by[6]).toMatchObject({ file: "app/limits.py", line: 2 });
+  });
   test("says plainly when nothing is there", () => {
     expect(renderUsageScan(scanNozleUsage({ "a.ts": "console.log(1)" }), [])).toContain("No Nozle usage found");
     expect(renderUsageScan(scan, [{ name: "@nozle-js/node", spec: "^0.10.0" }])).toContain("src/billing.ts:3");

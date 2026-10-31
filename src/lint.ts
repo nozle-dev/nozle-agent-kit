@@ -30,7 +30,25 @@ const featureTrack = /(?<!usage|costEvents|cost_events)\.(?:track|Track)\(/;
 const llmWrapper = /\b(?:wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_http_client|capture_async_http_client|record_usage|WrapOpenAIHTTPClient|WrapAnthropicHTTPClient|WrapHTTPClient|RecordUsage)\(/;
 // Direct Nozle calls only, so a file that calls the app's own track() wrapper is not flagged.
 const testFile = /(?:^|\/)(?:tests?|__tests__|spec)\/|[._-](?:test|spec)\.[a-z]+$|(?:^|\/)test_[^/]+\.py$/;
-const usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\/api\/v1\/(?:events|usage\/track)\b/;
+const usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\.holds\.(?:create|finalize)\(|\b(?:Create|Finalize)CreditHold\(|\/api\/v1\/(?:events|usage\/track|usage\/holds)\b/;
+// An event buffer (Node 0.30+, Python 0.28+, Go v0.27+) queues in memory and reports refusals to its error callback, never as a 409.
+const bufferCreate = /\bcreateEventBuffer\(|\bevent_buffer\(|\bNewEventBuffer\(/;
+const bufferAssign = /\b(\w+)\s*(?::\s*\w+\s*)?:?=\s*(?:await\s+)?[\w.]*(?:createEventBuffer|event_buffer|NewEventBuffer)\(|\bevent_buffer\([^\n]*\)\s+as\s+(\w+)/g;
+// shortcut: `.close(` and `.flush(` on any receiver count; a buffer drained only in another file gets the note.
+const bufferDrain = /\.(?:flush|close|Flush|Close)\(|\bwith\s+[\w.]*event_buffer\(/;
+// Refusals (Engine 2.31+): a used-up spend limit or unit limit is a product answer, never a transient failure.
+const refusalCode = "(?:budget_exceeded|usage_limit_exceeded|BudgetExceeded\\w*|UsageLimitExceeded\\w*|BUDGET_EXCEEDED|USAGE_LIMIT_EXCEEDED)";
+// shortcut: same-line patterns; a retry decided in a helper that receives the code is missed.
+const refusalRetry = new RegExp(`${refusalCode}[^\\n]*?(?:\\bretry\\w*\\(|\\bsetTimeout\\(|\\bsleep\\(|\\bSleep\\(|retryable\\s*[:=]\\s*(?:true|True))|\\bretry\\w*\\s*(?:[:=]\\s*(?:new\\s+Set\\(\\s*)?|\\(\\s*)[\\[{(][^\\n\\]})]*${refusalCode}`, "i");
+// A refusal read by searching its reason or message text instead of comparing the reason or code exactly.
+const refusalWord = /budget|limit|exceeded|insufficient|credit|denied/i;
+const reasonText = /\breason\??\.(?:includes|match|startsWith|endsWith|indexOf|search|toLowerCase|lower)\(|\[["']reason["']\]\??\.(?:includes|match|startsWith|endsWith|indexOf|lower)\(|strings\.(?:Contains|HasPrefix|HasSuffix|EqualFold)\(\s*[\w.]*\b[Rr]eason\b|\.test\(\s*[\w.?]*\breason\b|["'][^"'\n]*["']\s+in\s+[\w.]*(?:\[["']reason["']\]|\.reason\b)/;
+const refusalMessage = /(?:\.message|\bstr\(\w+\)|\bString\(\w+\)|\.Error\(\))[^\n]*?(?:\.includes\(|\.match\(|\.indexOf\(|\.test\(|\bin\b|strings\.Contains)[^\n]*?(?:budget|limit|exceeded|insufficient)|["'][^"'\n]*?(?:budget|limit|exceeded|insufficient)[^"'\n]*?["']\s+in\s+(?:str\(\w+\)|\w+\.message)|strings\.Contains\(\s*[\w.]*\.Error\(\)[^\n]*?(?:budget|limit|exceeded|insufficient)/i;
+// A credit hold (Engine 2.30+) reserves credits until it is finalized, released or expires.
+const holdCreate = /\.holds\.create\(|\bCreateCreditHold\(|\/usage\/holds["'`]/;
+// Engine 2.30+ refuses an Idempotency-Key that starts with `hold:` (reserved for finalized holds) with 400.
+const reservedHoldKey = /(?:idempotency[_-]?key|Idempotency-Key)["']?\s*[:=,]\s*f?[`"']hold:|\b(?:TrackUsage|CreateCreditHold)\([^\n]*,\s*[`"']hold:/i;
+const holdRelease = /\.holds\.release\(|\bReleaseCreditHold\(|\/usage\/holds\/[^\n]*\/release\b/;
 const mentionsNozle = /nozle/i;
 const conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409|\b(?:hasCode|has_code|HasCode)\(\s*["']idempotency_key_reused["']/;
 // A literal prefix before the placeholder (`sub_${id}`); a reference such as f"{record}.id" is not an id built from a template.
@@ -104,7 +122,10 @@ export function lintSource(path: string, text: string, backendPath?: string, { c
   if (featureTrack.test(text) && (creditTrack.test(text) || llmWrapper.test(text))) {
     advice.push(`${path}: calls track() next to ${creditTrack.test(text) ? "usage.track" : "an LLM wrapper or capture helper"}; both bill, so make sure they never record the same action`);
   }
-  if (!conflictHandled && !testFile.test(path) && mentionsNozle.test(text) && usageCall.test(text) && !conflictStatus.test(text)) {
+  const bufferNames = [...text.matchAll(bufferAssign)].map((match) => (match[1] ?? match[2])!);
+  const bufferTrack = bufferNames.length ? new RegExp(`\\b(?:${bufferNames.join("|")})\\.(?:track|Track)\\(`) : undefined;
+  const directUsage = text.split("\n").some((line) => usageCall.test(line) && !(bufferTrack?.test(line) ?? false));
+  if (!conflictHandled && !testFile.test(path) && mentionsNozle.test(text) && directUsage && !conflictStatus.test(text)) {
     advice.push(`${path}: sends usage but never checks for a 409 by status; log a 409 separately as a caller bug (the key was reused with a different body)`);
   }
   if (builtSubscriptionId.test(text)) {
@@ -115,6 +136,21 @@ export function lintSource(path: string, text: string, backendPath?: string, { c
   }
   if (!testFile.test(path) && chargesInsideTransaction(text)) {
     advice.push(`${path}: calls Nozle inside a database transaction; charge after the commit, keyed by the committed record, so a rollback can't leave a charge behind`);
+  }
+  if (!testFile.test(path) && refusalRetry.test(text)) {
+    advice.push(`${path}: retries a budget_exceeded or usage_limit_exceeded refusal; it is a product answer, so deny the action and show the limit instead of retrying`);
+  }
+  if (text.split("\n").some((line) => reasonText.test(line) && refusalWord.test(line)) || refusalMessage.test(text)) {
+    advice.push(`${path}: reads a refusal by searching its reason or message text; compare reason or code exactly with the SDK's RefusalReason values, or catch BudgetExceededError / UsageLimitExceededError`);
+  }
+  if (reservedHoldKey.test(text)) {
+    advice.push(`${path}: an idempotency key starts with "hold:", which Nozle reserves and refuses with 400; use another prefix, such as the run or job name`);
+  }
+  if (!testFile.test(path) && bufferCreate.test(text) && !bufferDrain.test(text)) {
+    notes.push(`${path}: creates an event buffer but never flushes or closes it; await flush() or close() before a serverless handler returns and close() on shutdown, or the queued events are lost`);
+  }
+  if (!testFile.test(path) && holdCreate.test(text) && !holdRelease.test(text)) {
+    notes.push(`${path}: creates a credit hold but never releases it; release the hold when the work fails or is cancelled, or its credits stay reserved until it expires`);
   }
   return notes.length ? { advice, notes } : { advice };
 }
