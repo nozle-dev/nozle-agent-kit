@@ -2,6 +2,11 @@
 
 Each release raises the version in every manifest (`bun scripts/release.ts <version>`). Claude Code and Codex cache an installed plugin by version, so a change shipped without a new version doesn't reach anyone who already installed it.
 
+## [1.0.6] - 2026-10-31
+
+### Changed
+- **Webhooks use the `standard` signature, the only scheme** (Core 11.18.0+, sent through Svix since Core 11.20.0). The webhook rules (`api-map`, `financial-rules`, capability 9) verify with the SDK helper and the endpoint's `whsec_` secret (`@nozle-js/node` 0.25+, `nozle-sdk` 0.23+, `nozle-go` v0.22+), reject a timestamp more than 5 minutes off, accept two secrets during a 24-hour rotation, and deduplicate on `webhook-id`. Delivery is planned as at least once with up to 8 attempts over about a day, a 10-second timeout, `webhook-delivery: abort-message` to stop retries, and recovery through `POST /webhook_endpoints/{id}/recover`. The `hmac` and `jwt` schemes, `X-Nozle-Signature*`, `X-Nozle-Unique-Key` and the "only 3 delivery attempts" rule are gone.
+
 ## [1.0.5] - 2026-10-27
 
 ### Changed

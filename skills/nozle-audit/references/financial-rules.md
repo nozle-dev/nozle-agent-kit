@@ -9,7 +9,7 @@ Use current product docs, account configuration, Core and Engine contracts, and 
 - LLM wrappers can emit feature usage plus optional cost events. Inspect shared clients, including free callers, before wrapping. For cost-only integration, use direct approved cost tracking.
 - Treat plan grants and purchased top-ups as distinct credit sources. Preserve decimal precision, expiry, rollover, and consumption rules.
 - Entity allocation may reserve credit balances. It does not prove support for an unreserved per-member cap on a shared company pool.
-- Fulfill checkout only after authoritative payment confirmation. Verify webhook signatures and process deliveries idempotently.
+- Fulfill checkout only after authoritative payment confirmation. Verify webhook signatures (`standard` scheme) and process deliveries idempotently, deduplicating on `webhook-id`; delivery is at least once with up to 8 attempts.
 - New cost configuration uses Cost Sheets. Respect cost composition to avoid double counting. Unknown rates remain uncosted and cost processing may be asynchronous.
 - Fixed top-up package support does not establish arbitrary-quantity top-ups. State this as a gap when the app requires a slider model.
 - Use the installed SDK interfaces and the published API reference (one OpenAPI spec for Core and Engine routes). The published Node package is `@nozle-js/node`; the React package is `@nozle-js/react`; Python is `nozle-sdk`; Go is `github.com/nozle-dev/nozle-go`. Read the installed version before relying on a feature named below with a minimum version.
