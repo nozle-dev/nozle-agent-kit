@@ -7313,8 +7313,8 @@ var signals = [
   { capability: 1, label: "Pricing and plans", pattern: /PricingTable|usePlans|\/plans\/public|public[_-]?plans/ },
   { capability: 2, label: "Checkout and payments", pattern: /\.checkout\(|checkoutMany|checkout_many|\/checkout\b|CheckoutButton|verifyCheckout/ },
   { capability: 3, label: "Subscriptions", pattern: /\.subscribe\(|\/subscribe\b|cancel_?[sS]ubscription|applySubscriptionTransition|subscriptions?\.(?:create|cancel)/ },
-  { capability: 4, label: "Credits and top-ups", pattern: /usage\.track|usage_track|\/usage\/track|credits\.|credit_systems|creditSystems/ },
-  { capability: 5, label: "Usage tracking", pattern: /\.track\(|\/events\b|wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_(?:async_)?http_client|record_usage|WrapHTTPClient|RecordUsage|WithLLM|transaction_?[iI]d/ },
+  { capability: 4, label: "Credits and top-ups", pattern: /usage\.track|usage_track|\/usage\/track|usage\.holds|\/usage\/holds|CreditHold\(|X-Nozle-Credit-Hold|credits\.|credit_systems|creditSystems/ },
+  { capability: 5, label: "Usage tracking", pattern: /\.track\(|\/events\b|createEventBuffer|event_buffer\(|NewEventBuffer|[tT]rack_?[bB]atch|wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_(?:async_)?http_client|record_usage|WrapHTTPClient|RecordUsage|WithLLM|transaction_?[iI]d/ },
   { capability: 6, label: "Feature access and limits", pattern: /\.can\(|\/can\b|usage\.check|usage_check|check-and-deduct|useEntitlement/ },
   { capability: 7, label: "Costs and margins", pattern: /costEvents|cost_events|\/cost-events|TrackCostEvent|costMeterCode|CostMeterCode|cost_meter_code/ },
   { capability: 8, label: "Customer billing dashboard", pattern: /BillingPortal|billing-portal|createBillingHandler|billingEndpoint|CurrentPlan|use(?:Subscription|CreditBalance|CreditHistory|Usage|Invoices|InvoiceDownload)\b/ },
@@ -7956,7 +7956,13 @@ var creditTrack = /\busage\.(?:track|Track)\(|\bTrackUsage\(/;
 var featureTrack = /(?<!usage|costEvents|cost_events)\.(?:track|Track)\(/;
 var llmWrapper = /\b(?:wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_http_client|capture_async_http_client|record_usage|WrapOpenAIHTTPClient|WrapAnthropicHTTPClient|WrapHTTPClient|RecordUsage)\(/;
 var testFile = /(?:^|\/)(?:tests?|__tests__|spec)\/|[._-](?:test|spec)\.[a-z]+$|(?:^|\/)test_[^/]+\.py$/;
-var usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\/api\/v1\/(?:events|usage\/track)\b/;
+var usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\.holds\.(?:create|finalize)\(|\b(?:Create|Finalize)CreditHold\(|\/api\/v1\/(?:events|usage\/track|usage\/holds)\b/;
+var bufferCreate = /\bcreateEventBuffer\(|\bevent_buffer\(|\bNewEventBuffer\(/;
+var bufferAssign = /\b(\w+)\s*(?::\s*\w+\s*)?:?=\s*(?:await\s+)?[\w.]*(?:createEventBuffer|event_buffer|NewEventBuffer)\(|\bevent_buffer\([^\n]*\)\s+as\s+(\w+)/g;
+var bufferDrain = /\.(?:flush|close|Flush|Close)\(|\bwith\s+[\w.]*event_buffer\(/;
+var holdCreate = /\.holds\.create\(|\bCreateCreditHold\(|\/usage\/holds["'`]/;
+var reservedHoldKey = /(?:idempotency[_-]?key|Idempotency-Key)["']?\s*[:=,]\s*f?[`"']hold:|\b(?:TrackUsage|CreateCreditHold)\([^\n]*,\s*[`"']hold:/i;
+var holdRelease = /\.holds\.release\(|\bReleaseCreditHold\(|\/usage\/holds\/[^\n]*\/release\b/;
 var mentionsNozle = /nozle/i;
 var conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409|\b(?:hasCode|has_code|HasCode)\(\s*["']idempotency_key_reused["']/;
 var builtSubscriptionId = /\b(?:subscriptionId|subscription_id|external_subscription_id|SubscriptionID)\b["']?\s*[:=]\s*(?:`[A-Za-z][^`$\n]*\$\{|f["'][A-Za-z][^"'{\n]*\{|["'][A-Za-z][^"'\n]*["']\s*\+)/;
@@ -8023,7 +8029,11 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
   if (featureTrack.test(text) && (creditTrack.test(text) || llmWrapper.test(text))) {
     advice.push(`${path}: calls track() next to ${creditTrack.test(text) ? "usage.track" : "an LLM wrapper or capture helper"}; both bill, so make sure they never record the same action`);
   }
-  if (!conflictHandled && !testFile.test(path) && mentionsNozle.test(text) && usageCall.test(text) && !conflictStatus.test(text)) {
+  const bufferNames = [...text.matchAll(bufferAssign)].map((match) => match[1] ?? match[2]);
+  const bufferTrack = bufferNames.length ? new RegExp(`\\b(?:${bufferNames.join("|")})\\.(?:track|Track)\\(`) : undefined;
+  const directUsage = text.split(`
+`).some((line) => usageCall.test(line) && !(bufferTrack?.test(line) ?? false));
+  if (!conflictHandled && !testFile.test(path) && mentionsNozle.test(text) && directUsage && !conflictStatus.test(text)) {
     advice.push(`${path}: sends usage but never checks for a 409 by status; log a 409 separately as a caller bug (the key was reused with a different body)`);
   }
   if (builtSubscriptionId.test(text)) {
@@ -8034,6 +8044,15 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
   }
   if (!testFile.test(path) && chargesInsideTransaction(text)) {
     advice.push(`${path}: calls Nozle inside a database transaction; charge after the commit, keyed by the committed record, so a rollback can't leave a charge behind`);
+  }
+  if (reservedHoldKey.test(text)) {
+    advice.push(`${path}: an idempotency key starts with "hold:", which Nozle reserves and refuses with 400; use another prefix, such as the run or job name`);
+  }
+  if (!testFile.test(path) && bufferCreate.test(text) && !bufferDrain.test(text)) {
+    notes.push(`${path}: creates an event buffer but never flushes or closes it; await flush() or close() before a serverless handler returns and close() on shutdown, or the queued events are lost`);
+  }
+  if (!testFile.test(path) && holdCreate.test(text) && !holdRelease.test(text)) {
+    notes.push(`${path}: creates a credit hold but never releases it; release the hold when the work fails or is cancelled, or its credits stay reserved until it expires`);
   }
   return notes.length ? { advice, notes } : { advice };
 }

@@ -2,6 +2,13 @@
 
 Each release raises the version in every manifest (`bun scripts/release.ts <version>`). Claude Code and Codex cache an installed plugin by version, so a change shipped without a new version doesn't reach anyone who already installed it.
 
+## [1.2.0] - unreleased
+
+### Added
+- **Event buffer** (`@nozle-js/node` 0.28, `nozle-sdk` 0.26, `nozle-go` v0.25). The runtime contract and capability 5 say when to send Feature Events with `track()` (one at a time, result read), `trackBatch` / `track_batch` / `TrackBatch` (a set the code holds) or an event buffer (`createEventBuffer` / `event_buffer` / `NewEventBuffer`, high volume from many requests). A buffer is in memory only: the agent passes business transaction ids, wires the error callback (`buffer_full`, `rejected`, `failed`, `closed`), awaits `flush()` or `close()` before a serverless handler returns and closes it on shutdown, and never routes credit spends or an answer the code acts on through it.
+- **Credit holds** (Engine 2.30.0, `@nozle-js/node` 0.29, `nozle-sdk` 0.27, `nozle-go` v0.26). For credit-backed work whose cost is known only afterwards with several workers on one balance (concurrent agents, LLM calls, long jobs), the agent holds the most the work can use, runs it only when the hold is allowed, finalizes with the actual usage and releases on failure, with an idempotency key from the run and a fixed timestamp. The LLM proxy takes `X-Nozle-Credit-Hold`. The charge-order decision gains "hold, then settle" (recommended in that case) next to charge first and check then charge; `usage.check` stays advisory.
+- **Build checks:** a note when an event buffer is never flushed or closed, or a credit hold is never released; advice for an idempotency key starting with the reserved `hold:` prefix. Hold create and finalize count as usage calls for the 409 and database-transaction checks, and `track()` on a buffer made in the same file no longer asks for a 409 branch. `nozle-check scan` finds buffers and holds.
+
 ## [1.1.0] - unreleased
 
 ### Changed

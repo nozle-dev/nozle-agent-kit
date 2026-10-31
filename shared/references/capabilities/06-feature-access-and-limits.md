@@ -7,7 +7,7 @@
 **Decide with the user**
 - `gate-points`: which actions are gated, and where the check runs (server side).
 - `limit-behavior`: block, warn, or degrade when a limit is reached.
-- `unreserved-limits`: whether a limit needs atomic enforcement (then use usage tracking, not a check followed by a deduct).
+- `unreserved-limits`: whether a limit needs atomic enforcement (then use usage tracking, or a credit hold when the cost is known only after the work, not a check followed by a deduct).
 
 **Implement**
 - Check eligibility on the server with `can()` right before the work. It reports eligibility and does not reserve credits; answer a denial with 403, or 429 when `overage` is set.
@@ -20,4 +20,4 @@
 
 **Account facts (docs, verified):** `POST /plans/{code}/entitlements` replaces every existing entitlement of the plan and `PATCH` adds or updates, so never call POST twice; deleting a privilege removes it from every plan and subscription; a feature's type and code are immutable; `can()` takes a customer and a feature (no entity), reports `used`, `limit` and `remaining` (both `null` when the feature has no cap: test with `== null`), and may be cached, so enforce it right before the work; per-subscription overrides exist (`PATCH /subscriptions/{id}/entitlements`).
 
-**Do not:** gate only in the browser, treat `can()` as a reservation, or invent privilege codes.
+**Do not:** gate only in the browser, treat `can()` or `usage.check` as a reservation (only a credit hold reserves), or invent privilege codes.
