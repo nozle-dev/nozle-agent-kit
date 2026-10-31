@@ -31,7 +31,7 @@ const llmWrapper = /\b(?:wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_
 // Direct Nozle calls only, so a file that calls the app's own track() wrapper is not flagged.
 const testFile = /(?:^|\/)(?:tests?|__tests__|spec)\/|[._-](?:test|spec)\.[a-z]+$|(?:^|\/)test_[^/]+\.py$/;
 const usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\.holds\.(?:create|finalize)\(|\b(?:Create|Finalize)CreditHold\(|\/api\/v1\/(?:events|usage\/track|usage\/holds)\b/;
-// An event buffer (Node 0.28+, Python 0.26+, Go v0.25+) queues in memory and reports refusals to its error callback, never as a 409.
+// An event buffer (Node 0.30+, Python 0.28+, Go v0.27+) queues in memory and reports refusals to its error callback, never as a 409.
 const bufferCreate = /\bcreateEventBuffer\(|\bevent_buffer\(|\bNewEventBuffer\(/;
 const bufferAssign = /\b(\w+)\s*(?::\s*\w+\s*)?:?=\s*(?:await\s+)?[\w.]*(?:createEventBuffer|event_buffer|NewEventBuffer)\(|\bevent_buffer\([^\n]*\)\s+as\s+(\w+)/g;
 // shortcut: `.close(` and `.flush(` on any receiver count; a buffer drained only in another file gets the note.
