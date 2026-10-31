@@ -2,6 +2,11 @@
 
 Each release raises the version in every manifest (`bun scripts/release.ts <version>`). Claude Code and Codex cache an installed plugin by version, so a change shipped without a new version doesn't reach anyone who already installed it.
 
+## [1.1.0] - unreleased
+
+### Changed
+- **Batch event tracking** (Engine 2.28.0, `@nozle-js/node` 0.26, `nozle-sdk` 0.24, `nozle-go` v0.23). For many events the agent uses `trackBatch` / `track_batch` / `TrackBatch`: up to 5000 events per gzipped request, one result per event, and rejected events reported by index instead of the whole batch failing. It reads `error_details` on a 200 and resends a failed batch with the same transaction ids. Older SDKs keep the 1-100 all-or-nothing rule.
+
 ## [1.0.6] - 2026-10-31
 
 ### Changed
