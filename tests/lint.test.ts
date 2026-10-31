@@ -94,6 +94,31 @@ describe("lintSource", () => {
     expect(lintSource("src/agent.ts", inside).advice.join(" ")).toContain("inside a database transaction");
   });
 
+  test("budget and usage-limit refusals are never retried", () => {
+    const retried = (text: string, path = "src/gate.ts") => lintSource(path, text).advice.some((line) => line.includes("retries a budget_exceeded"));
+    expect(retried("if (err instanceof BudgetExceededError) return retry(job);")).toBe(true);
+    expect(retried('if (r.reason === "usage_limit_exceeded") await sleep(1000);')).toBe(true);
+    expect(retried('const retryOn = new Set(["budget_exceeded", "upstream_timeout"]);')).toBe(true);
+    expect(retried('if e.code == "budget_exceeded": time.sleep(5)', "app/gate.py")).toBe(true);
+    expect(retried("if errors.As(err, new(*nozle.BudgetExceededError)) { time.Sleep(time.Second) }", "gate.go")).toBe(true);
+    // denying, skipping to the next unit, or a retry rule that excludes the refusal is fine
+    expect(retried('if (r.reason === RefusalReason.BudgetExceeded) { markDenied(unit); continue; }')).toBe(false);
+    expect(retried('const retryable = err.code !== "usage_limit_exceeded" && err.status >= 500;')).toBe(false);
+    expect(retried("if (err instanceof UsageLimitExceededError) await retry(job);", "tests/gate.test.ts")).toBe(false);
+  });
+
+  test("refusals are compared by exact reason, not by text", () => {
+    const fuzzy = (text: string, path = "src/gate.ts") => lintSource(path, text).advice.some((line) => line.includes("searching its reason or message text"));
+    expect(fuzzy('if (result.reason?.includes("budget")) deny();')).toBe(true);
+    expect(fuzzy('if "limit" in result["reason"]: deny()', "app/gate.py")).toBe(true);
+    expect(fuzzy('if strings.Contains(res.Reason, "exceeded") { deny() }', "gate.go")).toBe(true);
+    expect(fuzzy('if strings.Contains(err.Error(), "budget") { deny() }', "gate.go")).toBe(true);
+    expect(fuzzy('if (err.message.includes("insufficient")) deny();')).toBe(true);
+    expect(fuzzy('if (result.reason === RefusalReason.BudgetExceeded) deny();')).toBe(false);
+    expect(fuzzy("if ([RefusalReason.BudgetExceeded, RefusalReason.UsageLimitExceeded].includes(result.reason)) deny();")).toBe(false);
+    expect(fuzzy('if (cancel.reason.includes("moving")) log();')).toBe(false);
+  });
+
   test("advises on a subscription id built from a template", () => {
     expect(lintSource("a.ts", "const body = { subscriptionId: `sub_${userId}` };").notes?.[0]).toContain("subscription id");
     expect(lintSource("a.py", 'payload = {"external_subscription_id": f"sub_{user.id}"}').notes?.[0]).toContain("subscription id");

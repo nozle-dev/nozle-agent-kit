@@ -36,6 +36,14 @@ const bufferCreate = /\bcreateEventBuffer\(|\bevent_buffer\(|\bNewEventBuffer\(/
 const bufferAssign = /\b(\w+)\s*(?::\s*\w+\s*)?:?=\s*(?:await\s+)?[\w.]*(?:createEventBuffer|event_buffer|NewEventBuffer)\(|\bevent_buffer\([^\n]*\)\s+as\s+(\w+)/g;
 // shortcut: `.close(` and `.flush(` on any receiver count; a buffer drained only in another file gets the note.
 const bufferDrain = /\.(?:flush|close|Flush|Close)\(|\bwith\s+[\w.]*event_buffer\(/;
+// Refusals (Engine 2.31+): a used-up spend limit or unit limit is a product answer, never a transient failure.
+const refusalCode = "(?:budget_exceeded|usage_limit_exceeded|BudgetExceeded\\w*|UsageLimitExceeded\\w*|BUDGET_EXCEEDED|USAGE_LIMIT_EXCEEDED)";
+// shortcut: same-line patterns; a retry decided in a helper that receives the code is missed.
+const refusalRetry = new RegExp(`${refusalCode}[^\\n]*?(?:\\bretry\\w*\\(|\\bsetTimeout\\(|\\bsleep\\(|\\bSleep\\(|retryable\\s*[:=]\\s*(?:true|True))|\\bretry\\w*\\s*(?:[:=]\\s*(?:new\\s+Set\\(\\s*)?|\\(\\s*)[\\[{(][^\\n\\]})]*${refusalCode}`, "i");
+// A refusal read by searching its reason or message text instead of comparing the reason or code exactly.
+const refusalWord = /budget|limit|exceeded|insufficient|credit|denied/i;
+const reasonText = /\breason\??\.(?:includes|match|startsWith|endsWith|indexOf|search|toLowerCase|lower)\(|\[["']reason["']\]\??\.(?:includes|match|startsWith|endsWith|indexOf|lower)\(|strings\.(?:Contains|HasPrefix|HasSuffix|EqualFold)\(\s*[\w.]*\b[Rr]eason\b|\.test\(\s*[\w.?]*\breason\b|["'][^"'\n]*["']\s+in\s+[\w.]*(?:\[["']reason["']\]|\.reason\b)/;
+const refusalMessage = /(?:\.message|\bstr\(\w+\)|\bString\(\w+\)|\.Error\(\))[^\n]*?(?:\.includes\(|\.match\(|\.indexOf\(|\.test\(|\bin\b|strings\.Contains)[^\n]*?(?:budget|limit|exceeded|insufficient)|["'][^"'\n]*?(?:budget|limit|exceeded|insufficient)[^"'\n]*?["']\s+in\s+(?:str\(\w+\)|\w+\.message)|strings\.Contains\(\s*[\w.]*\.Error\(\)[^\n]*?(?:budget|limit|exceeded|insufficient)/i;
 // A credit hold (Engine 2.30+) reserves credits until it is finalized, released or expires.
 const holdCreate = /\.holds\.create\(|\bCreateCreditHold\(|\/usage\/holds["'`]/;
 // Engine 2.30+ refuses an Idempotency-Key that starts with `hold:` (reserved for finalized holds) with 400.
@@ -128,6 +136,12 @@ export function lintSource(path: string, text: string, backendPath?: string, { c
   }
   if (!testFile.test(path) && chargesInsideTransaction(text)) {
     advice.push(`${path}: calls Nozle inside a database transaction; charge after the commit, keyed by the committed record, so a rollback can't leave a charge behind`);
+  }
+  if (!testFile.test(path) && refusalRetry.test(text)) {
+    advice.push(`${path}: retries a budget_exceeded or usage_limit_exceeded refusal; it is a product answer, so deny the action and show the limit instead of retrying`);
+  }
+  if (text.split("\n").some((line) => reasonText.test(line) && refusalWord.test(line)) || refusalMessage.test(text)) {
+    advice.push(`${path}: reads a refusal by searching its reason or message text; compare reason or code exactly with the SDK's RefusalReason values, or catch BudgetExceededError / UsageLimitExceededError`);
   }
   if (reservedHoldKey.test(text)) {
     advice.push(`${path}: an idempotency key starts with "hold:", which Nozle reserves and refuses with 400; use another prefix, such as the run or job name`);

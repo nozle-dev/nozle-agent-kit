@@ -7315,7 +7315,7 @@ var signals = [
   { capability: 3, label: "Subscriptions", pattern: /\.subscribe\(|\/subscribe\b|cancel_?[sS]ubscription|applySubscriptionTransition|subscriptions?\.(?:create|cancel)/ },
   { capability: 4, label: "Credits and top-ups", pattern: /usage\.track|usage_track|\/usage\/track|usage\.holds|\/usage\/holds|CreditHold\(|X-Nozle-Credit-Hold|credits\.|credit_systems|creditSystems/ },
   { capability: 5, label: "Usage tracking", pattern: /\.track\(|\/events\b|createEventBuffer|event_buffer\(|NewEventBuffer|[tT]rack_?[bB]atch|wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_(?:async_)?http_client|record_usage|WrapHTTPClient|RecordUsage|WithLLM|transaction_?[iI]d/ },
-  { capability: 6, label: "Feature access and limits", pattern: /\.can\(|\/can\b|usage\.check|usage_check|check-and-deduct|useEntitlement/ },
+  { capability: 6, label: "Feature access and limits", pattern: /\.can\(|\/can\b|usage\.check|usage_check|check-and-deduct|useEntitlement|budgets\.list|ListBudgets|\/budgets\b|spend_limits|budget_exceeded|BudgetExceeded|usage_limit_exceeded|UsageLimitExceeded/ },
   { capability: 7, label: "Costs and margins", pattern: /costEvents|cost_events|\/cost-events|TrackCostEvent|costMeterCode|CostMeterCode|cost_meter_code/ },
   { capability: 8, label: "Customer billing dashboard", pattern: /BillingPortal|billing-portal|createBillingHandler|billingEndpoint|CurrentPlan|use(?:Subscription|CreditBalance|CreditHistory|Usage|Invoices|InvoiceDownload)\b/ },
   { capability: 9, label: "Billing and data sync", pattern: /webhook/i },
@@ -7960,6 +7960,11 @@ var usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\.holds\.(?:create|fina
 var bufferCreate = /\bcreateEventBuffer\(|\bevent_buffer\(|\bNewEventBuffer\(/;
 var bufferAssign = /\b(\w+)\s*(?::\s*\w+\s*)?:?=\s*(?:await\s+)?[\w.]*(?:createEventBuffer|event_buffer|NewEventBuffer)\(|\bevent_buffer\([^\n]*\)\s+as\s+(\w+)/g;
 var bufferDrain = /\.(?:flush|close|Flush|Close)\(|\bwith\s+[\w.]*event_buffer\(/;
+var refusalCode = "(?:budget_exceeded|usage_limit_exceeded|BudgetExceeded\\w*|UsageLimitExceeded\\w*|BUDGET_EXCEEDED|USAGE_LIMIT_EXCEEDED)";
+var refusalRetry = new RegExp(`${refusalCode}[^\\n]*?(?:\\bretry\\w*\\(|\\bsetTimeout\\(|\\bsleep\\(|\\bSleep\\(|retryable\\s*[:=]\\s*(?:true|True))|\\bretry\\w*\\s*(?:[:=]\\s*(?:new\\s+Set\\(\\s*)?|\\(\\s*)[\\[{(][^\\n\\]})]*${refusalCode}`, "i");
+var refusalWord = /budget|limit|exceeded|insufficient|credit|denied/i;
+var reasonText = /\breason\??\.(?:includes|match|startsWith|endsWith|indexOf|search|toLowerCase|lower)\(|\[["']reason["']\]\??\.(?:includes|match|startsWith|endsWith|indexOf|lower)\(|strings\.(?:Contains|HasPrefix|HasSuffix|EqualFold)\(\s*[\w.]*\b[Rr]eason\b|\.test\(\s*[\w.?]*\breason\b|["'][^"'\n]*["']\s+in\s+[\w.]*(?:\[["']reason["']\]|\.reason\b)/;
+var refusalMessage = /(?:\.message|\bstr\(\w+\)|\bString\(\w+\)|\.Error\(\))[^\n]*?(?:\.includes\(|\.match\(|\.indexOf\(|\.test\(|\bin\b|strings\.Contains)[^\n]*?(?:budget|limit|exceeded|insufficient)|["'][^"'\n]*?(?:budget|limit|exceeded|insufficient)[^"'\n]*?["']\s+in\s+(?:str\(\w+\)|\w+\.message)|strings\.Contains\(\s*[\w.]*\.Error\(\)[^\n]*?(?:budget|limit|exceeded|insufficient)/i;
 var holdCreate = /\.holds\.create\(|\bCreateCreditHold\(|\/usage\/holds["'`]/;
 var reservedHoldKey = /(?:idempotency[_-]?key|Idempotency-Key)["']?\s*[:=,]\s*f?[`"']hold:|\b(?:TrackUsage|CreateCreditHold)\([^\n]*,\s*[`"']hold:/i;
 var holdRelease = /\.holds\.release\(|\bReleaseCreditHold\(|\/usage\/holds\/[^\n]*\/release\b/;
@@ -8044,6 +8049,13 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
   }
   if (!testFile.test(path) && chargesInsideTransaction(text)) {
     advice.push(`${path}: calls Nozle inside a database transaction; charge after the commit, keyed by the committed record, so a rollback can't leave a charge behind`);
+  }
+  if (!testFile.test(path) && refusalRetry.test(text)) {
+    advice.push(`${path}: retries a budget_exceeded or usage_limit_exceeded refusal; it is a product answer, so deny the action and show the limit instead of retrying`);
+  }
+  if (text.split(`
+`).some((line) => reasonText.test(line) && refusalWord.test(line)) || refusalMessage.test(text)) {
+    advice.push(`${path}: reads a refusal by searching its reason or message text; compare reason or code exactly with the SDK's RefusalReason values, or catch BudgetExceededError / UsageLimitExceededError`);
   }
   if (reservedHoldKey.test(text)) {
     advice.push(`${path}: an idempotency key starts with "hold:", which Nozle reserves and refuses with 400; use another prefix, such as the run or job name`);

@@ -18,7 +18,7 @@ const signals: { capability: number; label: string; pattern: RegExp }[] = [
   { capability: 3, label: "Subscriptions", pattern: /\.subscribe\(|\/subscribe\b|cancel_?[sS]ubscription|applySubscriptionTransition|subscriptions?\.(?:create|cancel)/ },
   { capability: 4, label: "Credits and top-ups", pattern: /usage\.track|usage_track|\/usage\/track|usage\.holds|\/usage\/holds|CreditHold\(|X-Nozle-Credit-Hold|credits\.|credit_systems|creditSystems/ },
   { capability: 5, label: "Usage tracking", pattern: /\.track\(|\/events\b|createEventBuffer|event_buffer\(|NewEventBuffer|[tT]rack_?[bB]atch|wrapOpenAI|wrapAnthropic|captureFetch|recordUsage|wrap_openai|wrap_anthropic|wrap_http_client|capture_(?:async_)?http_client|record_usage|WrapHTTPClient|RecordUsage|WithLLM|transaction_?[iI]d/ },
-  { capability: 6, label: "Feature access and limits", pattern: /\.can\(|\/can\b|usage\.check|usage_check|check-and-deduct|useEntitlement/ },
+  { capability: 6, label: "Feature access and limits", pattern: /\.can\(|\/can\b|usage\.check|usage_check|check-and-deduct|useEntitlement|budgets\.list|ListBudgets|\/budgets\b|spend_limits|budget_exceeded|BudgetExceeded|usage_limit_exceeded|UsageLimitExceeded/ },
   { capability: 7, label: "Costs and margins", pattern: /costEvents|cost_events|\/cost-events|TrackCostEvent|costMeterCode|CostMeterCode|cost_meter_code/ },
   { capability: 8, label: "Customer billing dashboard", pattern: /BillingPortal|billing-portal|createBillingHandler|billingEndpoint|CurrentPlan|use(?:Subscription|CreditBalance|CreditHistory|Usage|Invoices|InvoiceDownload)\b/ },
   { capability: 9, label: "Billing and data sync", pattern: /webhook/i },
