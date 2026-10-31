@@ -65,6 +65,35 @@ describe("lintSource", () => {
     expect(lintSource("app/billing.py", "_nozle().track(u, f)\nif exc.status_code == 409: log.error(exc)").advice).toEqual([]);
   });
 
+  test("an event buffer reports refusals to its callback, so its track() needs no 409 branch", () => {
+    const node = 'import { nozle } from "./nozle";\nconst buffer = nozle.createEventBuffer({ onError });\nbuffer.track({ customerId, event: "api_calls", transactionId: `req:${req.id}` });\nprocess.on("SIGTERM", () => buffer.close());';
+    expect(lintSource("src/meter.ts", node).advice.some((line) => line.includes("409 by status"))).toBe(false);
+    expect(lintSource("src/meter.ts", `${node}\nawait nozle.track(c, e);`).advice.some((line) => line.includes("409 by status"))).toBe(true);
+    const python = "import nozle\nwith client.event_buffer(on_error=report) as buf:\n    buf.track(customer_id, 'api_calls')";
+    expect(lintSource("app/meter.py", python).advice).toEqual([]);
+    expect(lintSource("app/meter.py", python).notes).toBeUndefined();
+  });
+
+  test("notes an event buffer that is never flushed or closed", () => {
+    const open = 'import { Nozle } from "@nozle-js/node";\nexport const buffer = nozle.createEventBuffer({ onError });';
+    expect(lintSource("src/meter.ts", open).notes?.join(" ")).toContain("never flushes or closes");
+    expect(lintSource("src/meter.ts", `${open}\nexport async function handler() { await buffer.flush(); }`).notes).toBeUndefined();
+    expect(lintSource("meter.go", "buf := client.NewEventBuffer(nozle.EventBufferOptions{})\ndefer buf.Close(ctx)").notes).toBeUndefined();
+  });
+
+  test("credit holds: 409 by status, released on failure, never inside a transaction", () => {
+    const create = 'import { Nozle } from "@nozle-js/node";\nconst hold = await nozle.usage.holds.create(params, { idempotencyKey: `run:${run.id}` });';
+    expect(lintSource("src/agent.ts", create).advice.some((line) => line.includes("409 by status"))).toBe(true);
+    expect(lintSource("src/agent.ts", create).notes?.join(" ")).toContain("never releases it");
+    expect(lintSource("src/agent.ts", `${create}\ntry { await work(); } catch (e) { await nozle.usage.holds.release(hold.hold_id); throw e; }`).notes).toBeUndefined();
+    expect(lintSource("agent.go", "hold, err := client.CreateCreditHold(ctx, p, key)\nif runErr != nil { client.ReleaseCreditHold(ctx, hold.HoldID) }").notes).toBeUndefined();
+    expect(lintSource("src/agent.ts", "await nozle.usage.holds.create(params, { idempotencyKey: `hold:${run.id}` });").advice.join(" ")).toContain("reserves");
+    expect(lintSource("agent.go", 'client.CreateCreditHold(ctx, p, "hold:"+runID)').advice.join(" ")).toContain("reserves");
+    expect(lintSource("app/agent.py", 'nozle.usage.holds.create(c, f, idempotency_key=f"hold-{run.id}")').advice.join(" ")).not.toContain("reserves");
+    const inside = "await prisma.$transaction(async (tx) => {\n  await nozle.usage.holds.finalize(id, { properties });\n});";
+    expect(lintSource("src/agent.ts", inside).advice.join(" ")).toContain("inside a database transaction");
+  });
+
   test("advises on a subscription id built from a template", () => {
     expect(lintSource("a.ts", "const body = { subscriptionId: `sub_${userId}` };").notes?.[0]).toContain("subscription id");
     expect(lintSource("a.py", 'payload = {"external_subscription_id": f"sub_{user.id}"}').notes?.[0]).toContain("subscription id");

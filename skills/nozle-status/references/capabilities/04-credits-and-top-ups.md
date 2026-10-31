@@ -13,12 +13,13 @@
 
 **Implement**
 - Consume with `nozle.usage.track(input, { idempotencyKey })`: atomic, and the same key and payload must be reused on a retry. `nozle.usage.check(...)` is advisory only. Source: https://docs.nozle.dev/sdks/node/credits.md and https://docs.nozle.dev/guides/credits/usage-tracking.md
-- Ask the charge-order question for any action that can fail after it starts (charge first, or check then charge on success); see "Build traps". Act on `allowed: false` in both orders.
+- Ask the charge-order question for any action that can fail after it starts (charge first, hold then settle, or check then charge on success); see "Build traps". Act on `allowed: false` in every order.
+- **Credit holds** (Engine 2.30.0+; Node 0.29+, Python 0.27+, Go v0.26+): for work whose cost is known only afterwards while several workers spend one balance (concurrent agent runs, LLM calls, long jobs), `usage.holds.create` the most the work can use with an idempotency key from the run, run the work only when `allowed`, `finalize` with the actual usage, and `release` on failure. Keep a fixed timestamp per unit on create and finalize. Through the LLM proxy, send `X-Nozle-Credit-Hold` instead. Source: https://docs.nozle.dev/guides/credits/usage-tracking.md ("When to hold credits") and https://docs.nozle.dev/api/create-usage-hold.md
 - Build the idempotency key from a business id, not a per-attempt random id. When the app already holds balances, plan off, shadow and enforce plus a drain of the existing balance; see "Build traps" in financial-rules.md.
 - Paid top-ups are fixed packages; checkout creation does not grant credits, which arrive when the top-up invoice is fully paid (by any payment route; a partial payment grants nothing). Source: https://docs.nozle.dev/guides/credits/top-ups.md
 - Entity allocation moves eligible purchased credits; subscription grants are not transferable. A shared fallback does not enforce an unreserved per-member cap. Source: https://docs.nozle.dev/guides/credits/entities.md
 - Keep credit amounts as exact decimal strings.
 
-**Verify (local only):** a retry with the same key and payload consumes once; a changed payload with the same key is refused; a denied action stays denied on retry.
+**Verify (local only):** a retry with the same key and payload consumes once; a changed payload with the same key is refused; a denied action stays denied on retry. With holds: a failed run releases its hold, a successful one finalizes once with the actual usage, and a denied hold stops the work.
 
-**Do not:** use a check followed by a deduct as atomic, promise a per-member cap, or sum credit amounts as floats.
+**Do not:** use a check followed by a deduct as atomic, treat a hold as a charge or follow a finalize with `usage.track` for the same work, leave a hold unsettled on a failure path, promise a per-member cap, or sum credit amounts as floats.
