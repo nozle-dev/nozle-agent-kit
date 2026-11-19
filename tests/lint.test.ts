@@ -32,9 +32,14 @@ describe("lintSource", () => {
     expect(lintSource("route.ts", 'import { Nozle } from "@nozle-js/node";').block).toBeUndefined();
   });
 
-  test("a 409 checked with hasCode counts as handled", () => {
-    const text = 'import { Nozle } from "@nozle-js/node";\nawait nozle.usage.track(input, { idempotencyKey: k });\nif (err.hasCode("idempotency_key_reused")) log(err);';
-    expect(lintSource("a.ts", text).advice.some((line) => line.includes("409"))).toBe(false);
+  test("usage counts as handling late usage only when a 409 is branched on the period_invoiced code", () => {
+    const send = 'import { Nozle } from "@nozle-js/node";\nawait nozle.usage.track(input, { idempotencyKey: k });';
+    const late = (text: string, path = "a.ts") => lintSource(path, text).advice.some((line) => line.includes("409 period_invoiced"));
+    expect(late(`${send}\nif (err.hasCode("idempotency_key_reused")) log(err);`)).toBe(true);
+    expect(late(`${send}\nif (err.status === 409) log.error("caller bug");`)).toBe(true);
+    expect(late(`${send}\nif (err.hasCode(EventVoidErrorCode.PeriodInvoiced)) return resendNow(unit);`)).toBe(false);
+    expect(late('_nozle().track(u, f)\nif exc.has_code(EventVoidErrorCode.PERIOD_INVOICED): resend_now(unit)', "app/billing.py")).toBe(false);
+    expect(late('if errors.As(err, &apiErr) && apiErr.HasCode(nozle.CodePeriodInvoiced) { resendNow(unit) }\nclient.Track(ctx, p)', "meter.go")).toBe(false);
   });
 
   test("capture helpers count as wrappers, cost events do not bill", () => {
@@ -47,6 +52,7 @@ describe("lintSource", () => {
     expect(lintSource("a.ts", 'if (err.message.includes("409")) return;').advice).toHaveLength(1);
     expect(lintSource("a.py", 'if "already" in str(e): pass').advice).toHaveLength(1);
     expect(lintSource("a.ts", "if (err.status === 409) return;").advice).toEqual([]);
+    expect(lintSource("a.ts", 'if (err.code === "period_invoiced") return resendNow(unit);').advice).toEqual([]);
   });
 
   test("advises when one file both tracks and consumes or wraps", () => {
@@ -55,20 +61,20 @@ describe("lintSource", () => {
     expect(lintSource("a.ts", "await nozle.usage.track(input, { idempotencyKey: k });").advice.some((line) => line.includes("both bill"))).toBe(false);
   });
 
-  test("advises on usage without a 409 status branch", () => {
+  test("advises on usage that never handles 409 period_invoiced", () => {
     const send = "await nozle.track(c, e, {}, { transactionId: `og:${row.id}` });";
-    expect(lintSource("a.ts", send).advice.some((line) => line.includes("409 by status"))).toBe(true);
-    expect(lintSource("a.ts", `${send}\nif (err.status === 409) log.error("caller bug");`).advice).toEqual([]);
+    expect(lintSource("a.ts", send).advice.some((line) => line.includes("409 period_invoiced"))).toBe(true);
+    expect(lintSource("a.ts", `${send}\nif (err.status === 409 && err.code === "period_invoiced") return resendNow(unit);`).advice).toEqual([]);
     expect(lintSource("tests/test_billing.py", "nozle.track(c, e)").advice).toEqual([]);
-    expect(lintSource("app/billing.py", "_nozle().usage.track(user, feature, idempotency_key=k)").advice.some((line) => line.includes("409 by status"))).toBe(true);
+    expect(lintSource("app/billing.py", "_nozle().usage.track(user, feature, idempotency_key=k)").advice.some((line) => line.includes("409 period_invoiced"))).toBe(true);
     expect(lintSource("app/analytics.py", "analytics.track(user, event)").advice).toEqual([]);
-    expect(lintSource("app/billing.py", "_nozle().track(u, f)\nif exc.status_code == 409: log.error(exc)").advice).toEqual([]);
+    expect(lintSource("app/billing.py", "_nozle().track(u, f)\nif exc.status_code == 409: log.error(exc)").advice.some((line) => line.includes("409 period_invoiced"))).toBe(true);
   });
 
   test("an event buffer reports refusals to its callback, so its track() needs no 409 branch", () => {
     const node = 'import { nozle } from "./nozle";\nconst buffer = nozle.createEventBuffer({ onError });\nbuffer.track({ customerId, event: "api_calls", transactionId: `req:${req.id}` });\nprocess.on("SIGTERM", () => buffer.close());';
-    expect(lintSource("src/meter.ts", node).advice.some((line) => line.includes("409 by status"))).toBe(false);
-    expect(lintSource("src/meter.ts", `${node}\nawait nozle.track(c, e);`).advice.some((line) => line.includes("409 by status"))).toBe(true);
+    expect(lintSource("src/meter.ts", node).advice.some((line) => line.includes("409 period_invoiced"))).toBe(false);
+    expect(lintSource("src/meter.ts", `${node}\nawait nozle.track(c, e);`).advice.some((line) => line.includes("409 period_invoiced"))).toBe(true);
     const python = "import nozle\nwith client.event_buffer(on_error=report) as buf:\n    buf.track(customer_id, 'api_calls')";
     expect(lintSource("app/meter.py", python).advice).toEqual([]);
     expect(lintSource("app/meter.py", python).notes).toBeUndefined();
@@ -83,7 +89,7 @@ describe("lintSource", () => {
 
   test("credit holds: 409 by status, released on failure, never inside a transaction", () => {
     const create = 'import { Nozle } from "@nozle-js/node";\nconst hold = await nozle.usage.holds.create(params, { idempotencyKey: `run:${run.id}` });';
-    expect(lintSource("src/agent.ts", create).advice.some((line) => line.includes("409 by status"))).toBe(true);
+    expect(lintSource("src/agent.ts", create).advice.some((line) => line.includes("409 period_invoiced"))).toBe(true);
     expect(lintSource("src/agent.ts", create).notes?.join(" ")).toContain("never releases it");
     expect(lintSource("src/agent.ts", `${create}\ntry { await work(); } catch (e) { await nozle.usage.holds.release(hold.hold_id); throw e; }`).notes).toBeUndefined();
     expect(lintSource("agent.go", "hold, err := client.CreateCreditHold(ctx, p, key)\nif runErr != nil { client.ReleaseCreditHold(ctx, hold.HoldID) }").notes).toBeUndefined();
@@ -94,8 +100,14 @@ describe("lintSource", () => {
     expect(lintSource("src/agent.ts", inside).advice.join(" ")).toContain("inside a database transaction");
   });
 
-  test("budget and usage-limit refusals are never retried", () => {
-    const retried = (text: string, path = "src/gate.ts") => lintSource(path, text).advice.some((line) => line.includes("retries a budget_exceeded"));
+  test("product refusals (limits, blocked customers) are never retried", () => {
+    const retried = (text: string, path = "src/gate.ts") => lintSource(path, text).advice.some((line) => line.includes("retries a product refusal"));
+    expect(retried('if (err.code === "customer_payment_overdue") return retry(job);')).toBe(true);
+    expect(retried("if (isCustomerPaymentOverdue(err)) await sleep(60_000);")).toBe(true);
+    expect(retried('if e.code == "customer_blocked": time.sleep(5)', "app/gate.py")).toBe(true);
+    expect(retried('if (isCustomerPaymentOverdue(err)) return showPayPage(res, invoices);')).toBe(false);
+    // a late-usage resend with a current timestamp is the documented path, not a retry of a refusal
+    expect(retried('if (err.hasCode(EventVoidErrorCode.PeriodInvoiced)) return retryWithCurrentTimestamp(unit);')).toBe(false);
     expect(retried("if (err instanceof BudgetExceededError) return retry(job);")).toBe(true);
     expect(retried('if (r.reason === "usage_limit_exceeded") await sleep(1000);')).toBe(true);
     expect(retried('const retryOn = new Set(["budget_exceeded", "upstream_timeout"]);')).toBe(true);

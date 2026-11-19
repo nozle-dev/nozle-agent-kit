@@ -7960,16 +7960,16 @@ var usageCall = /\.(?:usage\.)?[Tt]rack\(|\bTrackUsage\(|\.holds\.(?:create|fina
 var bufferCreate = /\bcreateEventBuffer\(|\bevent_buffer\(|\bNewEventBuffer\(/;
 var bufferAssign = /\b(\w+)\s*(?::\s*\w+\s*)?:?=\s*(?:await\s+)?[\w.]*(?:createEventBuffer|event_buffer|NewEventBuffer)\(|\bevent_buffer\([^\n]*\)\s+as\s+(\w+)/g;
 var bufferDrain = /\.(?:flush|close|Flush|Close)\(|\bwith\s+[\w.]*event_buffer\(/;
-var refusalCode = "(?:budget_exceeded|usage_limit_exceeded|BudgetExceeded\\w*|UsageLimitExceeded\\w*|BUDGET_EXCEEDED|USAGE_LIMIT_EXCEEDED)";
+var refusalCode = "(?:budget_exceeded|usage_limit_exceeded|BudgetExceeded\\w*|UsageLimitExceeded\\w*|BUDGET_EXCEEDED|USAGE_LIMIT_EXCEEDED|customer_payment_overdue|customer_blocked|CUSTOMER_PAYMENT_OVERDUE|CUSTOMER_BLOCKED|CustomerPaymentOverdue\\w*|CustomerBlocked\\w*|isCustomerPaymentOverdue)";
 var refusalRetry = new RegExp(`${refusalCode}[^\\n]*?(?:\\bretry\\w*\\(|\\bsetTimeout\\(|\\bsleep\\(|\\bSleep\\(|retryable\\s*[:=]\\s*(?:true|True))|\\bretry\\w*\\s*(?:[:=]\\s*(?:new\\s+Set\\(\\s*)?|\\(\\s*)[\\[{(][^\\n\\]})]*${refusalCode}`, "i");
-var refusalWord = /budget|limit|exceeded|insufficient|credit|denied/i;
+var refusalWord = /budget|limit|exceeded|insufficient|credit|denied|overdue|blocked/i;
 var reasonText = /\breason\??\.(?:includes|match|startsWith|endsWith|indexOf|search|toLowerCase|lower)\(|\[["']reason["']\]\??\.(?:includes|match|startsWith|endsWith|indexOf|lower)\(|strings\.(?:Contains|HasPrefix|HasSuffix|EqualFold)\(\s*[\w.]*\b[Rr]eason\b|\.test\(\s*[\w.?]*\breason\b|["'][^"'\n]*["']\s+in\s+[\w.]*(?:\[["']reason["']\]|\.reason\b)/;
-var refusalMessage = /(?:\.message|\bstr\(\w+\)|\bString\(\w+\)|\.Error\(\))[^\n]*?(?:\.includes\(|\.match\(|\.indexOf\(|\.test\(|\bin\b|strings\.Contains)[^\n]*?(?:budget|limit|exceeded|insufficient)|["'][^"'\n]*?(?:budget|limit|exceeded|insufficient)[^"'\n]*?["']\s+in\s+(?:str\(\w+\)|\w+\.message)|strings\.Contains\(\s*[\w.]*\.Error\(\)[^\n]*?(?:budget|limit|exceeded|insufficient)/i;
+var refusalMessage = /(?:\.message|\bstr\(\w+\)|\bString\(\w+\)|\.Error\(\))[^\n]*?(?:\.includes\(|\.match\(|\.indexOf\(|\.test\(|\bin\b|strings\.Contains)[^\n]*?(?:budget|limit|exceeded|insufficient|overdue|blocked)|["'][^"'\n]*?(?:budget|limit|exceeded|insufficient|overdue|blocked)[^"'\n]*?["']\s+in\s+(?:str\(\w+\)|\w+\.message)|strings\.Contains\(\s*[\w.]*\.Error\(\)[^\n]*?(?:budget|limit|exceeded|insufficient|overdue|blocked)/i;
 var holdCreate = /\.holds\.create\(|\bCreateCreditHold\(|\/usage\/holds["'`]/;
 var reservedHoldKey = /(?:idempotency[_-]?key|Idempotency-Key)["']?\s*[:=,]\s*f?[`"']hold:|\b(?:TrackUsage|CreateCreditHold)\([^\n]*,\s*[`"']hold:/i;
 var holdRelease = /\.holds\.release\(|\bReleaseCreditHold\(|\/usage\/holds\/[^\n]*\/release\b/;
 var mentionsNozle = /nozle/i;
-var conflictStatus = /\b(?:status|status_code|statusCode|StatusCode)\b[^\n]{0,20}409|409[^\n]{0,20}\b(?:status|status_code|statusCode|StatusCode)\b|StatusConflict|HTTP_409|\b(?:hasCode|has_code|HasCode)\(\s*["']idempotency_key_reused["']/;
+var lateUsageCode = /period_invoiced|PeriodInvoiced|PERIOD_INVOICED/;
 var builtSubscriptionId = /\b(?:subscriptionId|subscription_id|external_subscription_id|SubscriptionID)\b["']?\s*[:=]\s*(?:`[A-Za-z][^`$\n]*\$\{|f["'][A-Za-z][^"'{\n]*\{|["'][A-Za-z][^"'\n]*["']\s*\+)/;
 var transactionOpen = /\.(?:\$)?transaction\(\s*(?:async\s*)?(?:\(?[\w,\s]*\)?)\s*=>\s*\{|\.(?:\$)?transaction\(\s*async\s+function\s*\([^)]*\)\s*\{/g;
 function chargesInsideTransaction(text) {
@@ -8038,8 +8038,8 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
   const bufferTrack = bufferNames.length ? new RegExp(`\\b(?:${bufferNames.join("|")})\\.(?:track|Track)\\(`) : undefined;
   const directUsage = text.split(`
 `).some((line) => usageCall.test(line) && !(bufferTrack?.test(line) ?? false));
-  if (!conflictHandled && !testFile.test(path) && mentionsNozle.test(text) && directUsage && !conflictStatus.test(text)) {
-    advice.push(`${path}: sends usage but never checks for a 409 by status; log a 409 separately as a caller bug (the key was reused with a different body)`);
+  if (!conflictHandled && !testFile.test(path) && mentionsNozle.test(text) && directUsage && !lateUsageCode.test(text)) {
+    advice.push(`${path}: sends usage but never handles 409 period_invoiced by its code; a unit dated in an invoiced period is refused on every replay, so follow the late-usage decision (resend once with a current timestamp, a one-off invoice, or let it go) and log other 409 codes (a changed payload) as a caller bug`);
   }
   if (builtSubscriptionId.test(text)) {
     notes.push(`${path}: builds a subscription id from a template; that is fine only for a subscription this code creates with that id, so when a lookup finds an existing one, use the id it returned`);
@@ -8051,7 +8051,7 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
     advice.push(`${path}: calls Nozle inside a database transaction; charge after the commit, keyed by the committed record, so a rollback can't leave a charge behind`);
   }
   if (!testFile.test(path) && refusalRetry.test(text)) {
-    advice.push(`${path}: retries a budget_exceeded or usage_limit_exceeded refusal; it is a product answer, so deny the action and show the limit instead of retrying`);
+    advice.push(`${path}: retries a product refusal (a spend or usage limit, or a customer blocked for unpaid invoices or by staff); deny the action and show the limit or the pay path instead of retrying`);
   }
   if (text.split(`
 `).some((line) => reasonText.test(line) && refusalWord.test(line)) || refusalMessage.test(text)) {
@@ -8069,7 +8069,7 @@ function lintSource(path, text, backendPath, { conflictHandled = false } = {}) {
   return notes.length ? { advice, notes } : { advice };
 }
 function handlesConflict(text) {
-  return conflictStatus.test(text);
+  return lateUsageCode.test(text);
 }
 function createsSubscription(text) {
   return subscriptionCreate.test(text);
