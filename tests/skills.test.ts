@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
+import { referencesFor } from "../scripts/sync-skills.ts";
 
 const root = join(import.meta.dir, "..");
 const skillNames = ["nozle-add", "nozle-audit", "nozle-doctor", "nozle-integrate", "nozle-resume", "nozle-setup", "nozle-status", "nozle-undo", "nozle-verify"];
@@ -25,9 +26,16 @@ describe("skills", () => {
       for (const link of source.matchAll(/\]\((references\/[^)]+)\)/g)) {
         expect(existsSync(join(dir, link[1]))).toBe(true);
       }
-      for (const file of readdirSync(join(root, "shared/references"), { recursive: true }).filter((entry) => String(entry).endsWith(".md"))) {
+      const shipped = existsSync(join(dir, "references"))
+        ? readdirSync(join(dir, "references"), { recursive: true }).map(String).filter((entry) => entry.endsWith(".md")).sort()
+        : [];
+      expect(shipped).toEqual(referencesFor(source));
+      for (const file of shipped) {
         expect(readFileSync(join(dir, "references", file), "utf8"))
           .toBe(readFileSync(join(root, "shared/references", file), "utf8"));
+        for (const link of readFileSync(join(dir, "references", file), "utf8").matchAll(/\]\(([\w./-]+\.md)\)/g)) {
+          expect(existsSync(join(dir, "references", file, "..", link[1]!))).toBe(true);
+        }
       }
       expect(readFileSync(join(dir, "scripts/nozle-check.mjs"), "utf8"))
         .toBe(readFileSync(join(root, "shared/scripts/nozle-check.mjs"), "utf8"));

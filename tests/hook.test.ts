@@ -297,9 +297,9 @@ describe("build checks", () => {
     expect(runHook("stop", { cwd: root, stop_hook_active: true }).decision).toBe("allow");
   });
 
-  test("stop does not repeat the 409 advice when another scoped file branches on a 409", () => {
+  test("stop does not repeat the late-usage advice when another scoped file branches on 409 period_invoiced", () => {
     const sender = "await nozle.usage.track(user, feature);\n";
-    const helper = "export const isConflict = (e) => e.status === 409;\n";
+    const helper = 'export const isLateUsage = (e) => e.status === 409 && e.code === "period_invoiced";\n';
     writeFileSync(join(root, "src/a.ts"), sender);
     writeFileSync(join(root, "src/new.ts"), sender);
     writeRecord({ source_files: [{ path: "src/a.ts", sha256: sha(sender) }, { path: "src/new.ts", sha256: sha(sender) }] });
