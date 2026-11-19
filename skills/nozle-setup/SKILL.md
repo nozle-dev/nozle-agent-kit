@@ -1,6 +1,6 @@
 ---
 name: nozle-setup
-description: Use when a developer needs to connect their coding agent to their Nozle account, or to finish Nozle dashboard setup (onboarding, plans, meters, payment connection, webhooks) before or alongside an integration, or to check that the Nozle API keys in the app's `.env` or environment work (without ever seeing them).
+description: Use when a developer needs to connect their coding agent to their Nozle account, or to finish Nozle dashboard setup (onboarding, plans, meters, payment connection, webhooks) before or alongside an integration, or to check that the Nozle API keys in the app's `.env` or environment work (without ever seeing them), or to send a first test usage event to see it in the dashboard.
 ---
 
 # Connect to Nozle and plan dashboard setup
@@ -16,4 +16,7 @@ Whenever you need the user to choose or approve something, use the host's questi
 3. **Read and summarize** the configuration by family with status and revision: features and meters, plans and pricing, entitlements, credits and pool policies, Cost Sheets and margin policies, payment connection, webhooks, availability. Mark gaps `missing`, `incomplete`, `unavailable`, or `unsupported`; never fill them from docs.
 4. **List manual setup.** Each gap becomes an item in `nozle-setup-plan.yaml` (`schema: nozle.setup-plan`, `version: 1`, `items` with an ID, `status: manual_pending`, and clear `instructions` for the dashboard). The plugin never creates plans, meters, Cost Sheets, subscriptions, balances, payments, or webhooks. Validate with `nozle-check <absolute path>/nozle-setup-plan.yaml` and keep the file free of credentials.
    Include the API key step as a manual item: the user creates the key under Settings > API Keys and puts it in their own `.env`. The plugin never creates, asks for, or reads a key; any variable the app needs is added to `.env.example` with an empty value. When the user says the keys are in place, run `nozle-check key <app directory>` (one plain command; it never prints a key) and mark the key item done only when every key it finds works.
-5. **Next.** Offer `nozle-integrate` for the application work, or `nozle-audit` to see what applies first.
+5. **First test event (the user runs it, never you).** It sends one real, billable usage event, so give the user these commands to run from their own shell, with their secret key in their own environment, and do not run them yourself (the guard hooks deny any command that names the script):
+   - Dry run, which sends nothing and prints the request and a fixed timestamp: `node <this skill's absolute folder>/scripts/nozle-first-event.mjs --customer <external customer id> --event <meter code> --subscription <external subscription id>`
+   - Then send it by running the command the dry run prints, which adds `--timestamp <seconds> --yes`. Rerunning that exact command sends the identical event, so it counts once.
+6. **Next.** Offer `nozle-integrate` for the application work, or `nozle-audit` to see what applies first.

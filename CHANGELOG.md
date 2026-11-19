@@ -6,6 +6,7 @@ Each release raises the version in every manifest (`bun scripts/release.ts <vers
 
 ### Changed
 - **Docs first.** The skills no longer carry Nozle's API facts (endpoints and their service, fields, SDK method names and signatures, minimum versions, defaults, limits, error codes); those went stale within weeks of each release. They keep the workflow, the approval gates and the money rules, and the new `docs-lookup.md` says which docs page answers each need, how to query the bundled docs MCP (`search_nozle`, `query_docs_filesystem_nozle`, the OpenAPI file) and how to confirm an SDK name in the installed SDK's type definitions. `api-map.md` and `runtime-contracts.md` are removed; the capability guides, `stack-support.md` and `plan-design.md` point at pages instead of restating them.
+- **`nozle-setup` hands the user the first-event commands** (dry run, then the printed `--timestamp ... --yes` command) and triggers on a request to send a first test event. The 1.3.0 eval showed that request matched no skill, and the agent, unable to read the plugin's reference files, guessed the flags.
 - **Each skill ships only the references it reads** (`scripts/sync-skills.ts` follows the names from its `SKILL.md`), and the first-event script only where a reference tells the user to run it.
 - The account connection no longer asks for a billing-read permission (the scope was removed from the server).
 

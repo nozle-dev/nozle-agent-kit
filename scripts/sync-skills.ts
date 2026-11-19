@@ -30,10 +30,10 @@ export function referencesFor(skillText: string): string[] {
   return [...seen].sort();
 }
 
-/** The first-event script is copied only where a reference tells the user to run it. */
-export function scriptsFor(references: string[]): string[] {
+/** The first-event script is copied only where the skill or a reference it reads tells the user to run it. */
+export function scriptsFor(skillText: string, references: string[]): string[] {
   const scripts = readdirSync(join(root, "shared/scripts"));
-  const firstEvent = references.some((file) => readFileSync(join(shared, file), "utf8").includes("nozle-first-event.mjs"));
+  const firstEvent = [skillText, ...references.map((file) => readFileSync(join(shared, file), "utf8"))].some((text) => text.includes("nozle-first-event.mjs"));
   return scripts.filter((name) => name !== "nozle-first-event.mjs" || firstEvent);
 }
 
@@ -43,11 +43,12 @@ if (import.meta.main) {
     rmSync(join(dir, "references"), { recursive: true, force: true });
     rmSync(join(dir, "scripts"), { recursive: true, force: true });
     mkdirSync(join(dir, "scripts"), { recursive: true });
-    const references = referencesFor(readFileSync(join(dir, "SKILL.md"), "utf8"));
+    const skillText = readFileSync(join(dir, "SKILL.md"), "utf8");
+    const references = referencesFor(skillText);
     for (const file of references) {
       mkdirSync(join(dir, "references", file, ".."), { recursive: true });
       cpSync(join(shared, file), join(dir, "references", file));
     }
-    for (const name of scriptsFor(references)) cpSync(join(root, "shared/scripts", name), join(dir, "scripts", name));
+    for (const name of scriptsFor(skillText, references)) cpSync(join(root, "shared/scripts", name), join(dir, "scripts", name));
   }
 }
