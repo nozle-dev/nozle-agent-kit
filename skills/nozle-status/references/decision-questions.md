@@ -1,46 +1,40 @@
-# Questions to ask, and how to ask them
+# Decisions the user makes
 
-Every question comes from what this run found, never from a list kept in the plugin. Three sources: the **docs MCP** (what Nozle supports now), the **account read** (what is configured), and the **code study** (what the application does). A fact the code or the account settles is a finding, not a question. Ask only what is still open, and nothing the user already answered in this conversation or the record.
+Questions come from this run's docs reads, account read and code study. A fact they settle is a finding, not a question. Never ask what the user already answered here or in the record. How to ask: [asking.md](asking.md).
 
-## A specific request starts work; only gaps are asked
+## A named outcome asks only its gaps
 
-When the user names an outcome ("track usage for the chatbot", "add Razorpay checkout"), run the whole chain (stack, connect, account, code) and then ask only about the unresolved parts of that outcome. Do not show the menu again. When nothing is unresolved, say so, show the plan and get the scope approval; do not invent questions.
+When the user names an outcome, run the whole chain (stack, connect, account, code), then ask only the unresolved parts. No menu again. With nothing open, show the plan and ask for scope approval.
 
 ## Payment provider
 
-1. **Find what the product uses today from the code**, whatever it is: read the dependency manifests, imports, environment variable names, webhook routes and billing tables. Do not match against a fixed list of vendor names; describe what you found (the library or API, and which jobs it does: checkout, subscriptions, invoices, metering, credits, webhooks). A homegrown billing module counts.
-2. **Nozle billing runs only through what Nozle offers.** Payments, subscriptions, renewals, plan changes and credit grants go through Nozle checkout and Nozle subscriptions with a provider Nozle documents. Never plan external billing authority (billing-state or opening-balance imports that leave another provider billing). Ask once, per job the current setup does, with the options the evidence supports:
-   - move that job to Nozle (recommended; name the provider Nozle would use, and what migrates: customers, subscriptions, open invoices, stored payment methods, webhooks), see capability 10;
-   - leave that job out of this integration: the current setup keeps it, and Nozle billing does not touch it (no paid-plan subscriptions or credits in Nozle for it), while Nozle can still track usage and costs.
-   The move is the recommended option even when it is the larger change; name the documented provider that fits the product's currency and market. Never offer a provider the docs do not document as a Nozle option (for example "keep it and treat it as unverified"). Never plan a move without the explicit yes. A move is its own scope item with a migration and a rollback.
-3. **When the product has no provider yet**, or the user chose replace, the options are the providers in both lists: those the docs MCP documents with a checkout guide, and those connected in the account read. A provider the docs support but the account lacks becomes a dashboard step; a connected provider without a guide is `unverified`, say so. Never offer a provider from memory.
-4. Facts that differ per provider (currency, hosted versus modal results, webhook setup, refunds) come from that provider's guide in the docs MCP at run time, and the plan states them.
+1. Find what the product uses today from the code (manifests, imports, env variable names, webhook routes, billing tables), whatever it is, homegrown included. Describe the library and the jobs it does (checkout, subscriptions, invoices, metering, credits, webhooks). Never match against a fixed list of vendor names.
+2. For each job a provider the docs do not document does, ask once:
+   - move it to Nozle checkout with a documented provider (Recommended, even when larger; name the one that fits the product's currency and market, and what migrates: customers, subscriptions, open invoices, stored payment methods, webhooks; capability 10);
+   - leave it out: the current system keeps it, with no Nozle paid plans or credits for those customers, while Nozle can still track usage and costs.
+   Never offer to keep an undocumented provider beside Nozle billing, and never plan a move without an explicit yes. A move is its own scope item with a migration and a rollback.
+3. With no provider yet, offer only providers that both have a docs checkout guide and appear in the account read. A documented provider the account lacks is a dashboard step; a connected provider without a guide is `unverified`. Never offer one from memory.
+4. Per-provider facts (currency, hosted or modal, webhook setup, refunds) come from that provider's docs page at run time.
 
 ## What to measure: one decision per activity
 
-For each activity found in the code study (a user action that spends, sends, generates, looks up or consumes anything), build a row, then classify it from evidence:
+Classify each activity from the code study (anything that spends, sends, generates, looks up or consumes):
 
-| Status | Evidence | What you do |
+| Status | Evidence | Do |
 |---|---|---|
-| `matched` | The account already has a meter or Feature for it and the code point is found | Confirm with the user in one grouped question, then plan it. No dashboard step. |
-| `suggested` | The code point exists, the account has nothing for it | Propose the unit, the meter and where it would be counted. If chosen, the meter is a dashboard step the user creates; code waits for the account read to show it. |
-| `partial` | Some of its siblings are tracked and this one is not (for example two of three sending channels) | Say which are tracked, suggest the missing one, and ask. |
+| `matched` | The account has a meter or feature for it and the code point is found | Confirm in one grouped question; no dashboard step |
+| `suggested` | Code point found, nothing in the account | Propose unit, meter and count point; the meter is a dashboard step and the code waits for a fresh read |
+| `partial` | Some siblings are tracked, this one is not | Name the tracked ones, suggest the missing one, ask |
 
-Rules:
-- **The user answers for every activity; you never decide one yourself.** Not "decide later", not "leave sends alone": when the study found several activities, each area gets a question with your suggestion first. Save the answer with `activities: [<study activity ids>]`; the edit guard refuses application edits while any activity in `nozle-study.yaml` has no answer.
-- **Anything that costs money or consumes a resource is worth metering.** AI generation, sends (email, WhatsApp, LinkedIn, SMS), lookups and enrichment, verification, storage: mark it `suggested` even when nothing charges for it today, and recommend tracking it (billable usage, or cost only when charging users would change what they pay today and the user should choose). Never recommend "decide later" for these; it is only an option.
-- **No code access is a question of its own, never a reason to skip.** When the code that does the work is in a service outside the folder, say so plainly ("I have no access to the code that sends WhatsApp messages") and ask with these options: give me the folder or repository (Recommended); meter it from this side, at the point where this code calls that service (name the call site), when there is one; decide later; do not track. Ask this before the measure question for those activities, and mark conclusions about them `inferred` until the code is read.
-- Every activity gets one of these answers, always offered: **track as billable usage**, **track cost only**, **do not track** (leave the code unchanged and record the exclusion), or **decide later** (nothing is built for it). "Do not track" is a normal answer, never an error.
-- Group related activities into one question by area (for example the onboarding flow, the copilot, the outbound channels) so a user can say yes to one area and no to another. Up to four questions per tool call; a second call for more.
-- Put your recommendation first, marked "(Recommended)", with the reason from the evidence. For a `matched` row the recommendation is to confirm; for a `suggested` row it is whatever the code and the account support.
-- State the effect of each option on charges and on current users in its description.
-- Billing vocabulary stays the user's: use the names the product and the account use.
+- The user answers for every activity; never decide one yourself, "decide later" included. Group by area (onboarding, copilot, outbound channels), up to four questions per call, suggestion first.
+- Always offer: track as billable usage, track cost only, do not track (code unchanged, exclusion recorded), decide later (nothing built).
+- Anything that costs money or consumes a resource (AI generation, sends, lookups, enrichment, storage) is `suggested` even when nothing charges for it today; recommend tracking it (cost only when billing would change what users pay today).
+- Code outside the folder is its own question first: give me the folder or repository (Recommended); meter it at this code's call site, when one exists; decide later; do not track. Mark conclusions about it `inferred`.
+- Use the product's and the account's own billing names.
 
-## Asking, and handling the answers
+## Recording decisions
 
-- Use the host's question tool (see SKILL.md, "Ask with the host's question tool"); without one, a numbered list with the recommendation first.
-- After each answer, restate in one line what you understood for any free-text ("Other") reply before acting on it. An ambiguous reply is asked again, never guessed.
-- Save every answered question as an entry of `decisions` in `nozle.integration.yaml`: `id`, `question`, `answer`, `basis` (`user` when they chose or typed it, `user_confirmed_recommendation` when they accepted your recommendation, `matched_in_account` when the account and code settled it and the user confirmed). Do the same for activities: id `activity:<name>`, answer the treatment.
-- A decision made in the record binds the build. A later change needs a new question and an updated entry. The scope shown for approval lists the decisions it rests on, and the exclusions come from the "do not track" answers.
-- A "do not track" answer is enforced, not just noted: list the activity's files (or its folder, with a trailing `/`) in `approved_scope.excluded_paths`. The edit guard then refuses any change to them and the record fails validation if an included path sits inside one. When a file hosts both a tracked and an untracked activity, say so in the question and ask how to split it before the scope.
-- An unanswered decision blocks the work that depends on it. Independent approved work may continue.
+- Each answered question becomes a `decisions` entry in `nozle.integration.yaml`: `id`, `question`, `answer`, `basis` (`user`, `user_confirmed_recommendation`, or `matched_in_account`). Measure decisions use id `activity:<name>` and `activities: [<study activity ids>]`; edits are refused while a study activity has no answer.
+- A recorded decision binds the build; changing it needs a new question. The scope lists the decisions it rests on.
+- "Do not track" puts the activity's files (or folder with a trailing `/`) in `approved_scope.excluded_paths`; the edit guard refuses changes there. A file holding both a tracked and an untracked activity is a question before the scope.
+- An unanswered decision blocks only the work that depends on it.

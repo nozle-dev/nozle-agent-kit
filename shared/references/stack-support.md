@@ -1,46 +1,32 @@
-# Stack support: say which Nozle path applies
+# Stack support
 
-Run `nozle-check env <application folder>` (as one plain command: `nozle-check env <absolute application folder>`, or `node <skill folder>/scripts/nozle-check.mjs env <folder>`; never chain it with `cd`; the target folder in a monorepo) and read its backend and frontend paths. It reads manifests only. Confirm the SDK list, each SDK's runtime minimums and what each covers against the docs MCP `/sdks` pages at run time (`/sdks/<lang>/installation`, `/sdks/react/installation`): the table below is a starting point, and a framework or SDK the docs now cover beats it. Never claim an SDK exists that the docs do not list.
+Run `nozle-check env <absolute application folder>` (the target app in a monorepo) and read its backend and frontend paths. Confirm the SDK list, runtime minimums and coverage against `/sdks/<lang>/installation` and `/sdks/react/installation`: the docs beat the table below, and an SDK the docs do not list does not exist.
 
-## First-response statement (required, before the menu)
+## First-response statement
 
-Say, in your own words, all of this:
+Before the menu, say:
 
-- **Stack:** language, framework, runtime, package manager, in one line.
-- **Backend path:** `@nozle-js/node`, `nozle-sdk`, or the REST API, and why.
+- **Stack:** language, framework, runtime, package manager.
+- **Backend path:** `@nozle-js/node`, `nozle-sdk`, the Go SDK, or REST, and why.
 - **Frontend path:** `@nozle-js/react`, native components, or none, and why.
-- **When there is no SDK:** "There is no Nozle SDK for <framework>. I will <what you will build instead>. You own <what stays with you>." Say it even when the fallback is easy.
-- **Unknowns:** name each one from the `unknown` lines (for example the runtime behind `adapter-auto`) and what would change if it goes the other way.
+- **No SDK:** "There is no Nozle SDK for <framework>. I will <build instead>. You own <what stays with you>." Never write that SDK support is unverified; the env check and docs give the verdict.
+- **LLM capture:** per service with an LLM client, whether the capture page for this language (`/sdks/node/llm-auto-capture`, `/sdks/python/llm-auto-capture`, `/sdks/go/llm-usage`) covers it; when not, usage and cost are still reported from the backend (capability 7).
+- **Unknowns:** each `unknown` line (for example the runtime behind `adapter-auto`) and what changes either way.
 
-## The rules
+## Rules
 
-1. Secret-key calls (`sk_`) live on a server only. Server means Node, Python, or any language over REST. A browser, a static site, or a mobile app never holds a secret key.
-2. Backend: use the Node SDK (`@nozle-js/node`) on Node, the Python SDK (`nozle-sdk`) on Python and the Go SDK (`github.com/nozle-dev/nozle-go`) on Go, at a runtime version its installation page supports. On Workers or other edge runtimes, and in Ruby, Java, PHP or any language without an SDK, use the REST API with the same contract. Read the endpoint pages from the docs MCP.
-3. Frontend: `@nozle-js/react` only for React, at the React version and peer packages its installation page lists; theme it the way its styling page says, and serve its customer billing hooks from the backend route the SDK pages describe. For Svelte, Vue, Nuxt, Angular, Solid, Astro, plain HTML or anything else, build small native components in the app's own framework. They read plans from a backend route (or the public catalog with a publishable `pk_` key) and call backend routes for checkout, gates and balances. The customer always comes from the authenticated session, never from the browser.
-4. Astro with a React integration can use a React island with `@nozle-js/react`. Offer that as one option next to native components, with the trade-off (a React runtime in an otherwise React-free site).
-5. No server code at all (static site, SPA): say so. Secret-key work needs a backend. Offer the choices (an SSR adapter or server route, a separate backend, or a managed backend) and do only the public-catalog display until the user decides.
-6. Environment problems are findings, not silent fixes: no dependency manifest, an out-of-sync lockfile, a runtime or React version below what the SDK's installation page supports, an SDK version already installed. Say what you found and what it changes. Creating a missing manifest is an edit that needs the approved scope.
-7. Native components are application code. List them in the scope, keep them accessible, and note that Nozle ships no styling for them.
+1. Secret-key calls live on a server only (any language). A browser, static site or mobile app never holds one.
+2. Backend: the Node, Python or Go SDK at a runtime its installation page supports. Edge runtimes, Ruby, Java, PHP or any language without an SDK use REST with the same contract.
+3. Frontend: `@nozle-js/react` only for React, at the versions its installation page lists, its billing hooks served by the backend route the SDK pages describe. Other frameworks get small native components the user owns; they read plans from a backend route (or the public catalog with a `pk_` key) and call backend routes. Astro may use a React island; offer it with the trade-off.
+4. No server code: secret-key work cannot happen here. Ask before any plan or record (integrate skill, step 1).
+5. Environment problems (no manifest, a stale lockfile, a version below the minimum, an SDK already installed) are findings, not silent fixes.
+6. A choice needs every half it uses: backend for secret-key calls, webhooks and usage events; frontend for pricing, checkout and billing screens. Show a choice with a missing half as a requirement (add it here, a separate service the user owns, or out of scope), never hide it.
 
-## Framework notes
+## Framework traps
 
-| Stack | Backend | Frontend | Watch for |
-|---|---|---|---|
-| Next.js, Remix | Node SDK in route handlers or loaders | React SDK | Keep `sk_` out of client components |
-| SvelteKit | Node SDK in `+server.ts` and server `load`; read keys from `$env/dynamic/private` (or `$env/static/private`), not `process.env`, which SvelteKit does not fill from `.env` | Native Svelte | The adapter decides the runtime: `adapter-node` is Node, `adapter-cloudflare` is edge (REST), `adapter-auto` is unknown |
-| Astro | Node SDK only with an SSR adapter (`@astrojs/node`); static builds have no server | Native Astro or a React island | Static output cannot hold secrets |
-| Vue, Nuxt | Nuxt server routes use the Node SDK; plain Vue needs a backend | Native Vue | Nuxt on edge presets: REST |
-| Angular | Needs a separate backend | Native Angular | Same as any SPA |
-| Express, Fastify, Hono, Nest | Node SDK | Whatever the frontend is | Hono on Workers: REST |
-| FastAPI, Django, Flask | Python SDK | Whatever the frontend is | The SDK's async client under async handlers; otherwise wrap synchronous calls in a thread |
-| Go | Go SDK (`nozle-go`) | Native | The Go version its installation page lists |
-| Ruby, PHP, Java | REST from the backend | Native | No SDK |
-| Mobile apps | REST through the merchant backend | Native UI | The app never holds a secret |
+- SvelteKit: keys come from `$env/dynamic/private` or `$env/static/private`, not `process.env`; `adapter-node` is Node, `adapter-cloudflare` is edge (REST), `adapter-auto` is unknown.
+- Astro: the Node SDK only with `@astrojs/node`; static output holds no secrets.
+- Nuxt on edge presets and Hono on Workers: REST. Plain Vue, Angular and mobile apps need a backend.
+- FastAPI, Django: the SDK's async client under async handlers when the installed version has one.
 
-## A new project with no stack chosen
-
-Do not scan or edit anything. Say which stacks have first-class Nozle SDKs (Node with Next.js, SvelteKit on the Node adapter, Express or Hono; Python with FastAPI or Django; React on the frontend) and which would use REST, give one line of trade-off for each, and then follow the user's choice. Never insist on a stack. Whatever they pick, the same first-response statement applies once code exists.
-
-## End to end needs both halves
-
-Most billing choices need a backend (secret-key calls, webhooks, usage events, entitlement checks) and a frontend (pricing, checkout, billing screens). A choice is only complete when each half it needs exists. Name the missing half before the user picks, and offer: add it in this project, use a separate service the user owns, or leave the choice out. Do not hide a choice because a half is missing.
+A new project with no stack: name the stacks with SDKs and those on REST, one trade-off each, and follow the user's choice.

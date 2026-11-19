@@ -1,17 +1,35 @@
-# Inspect the application
+# Study the application's code
 
-Shared by integrate, audit, doctor, and resume. Code never leaves the machine.
+Code never leaves the machine. The study never waits for the account login.
 
-1. Run `nozle-check env` (run it as one plain command with the absolute application path: `nozle-check env <path>` where the plugin's bin is on PATH, otherwise `node <skill folder>/scripts/nozle-check.mjs env <path>` using the skill's base directory; never chain it with `cd`, `&&`, `||` or a subshell, because hosts that run without an approver refuse chained commands, and if one form is refused try the other), then read dependency manifests and the bounded paths that matter. Turn its backend and frontend paths into the support statement described in [stack-support.md](stack-support.md). In a monorepo, identify the target application, confirm it with the user, and keep every path inside it.
-2. Trace, in this order: authentication and customer identity; team or organization membership; existing payment, subscription, and billing ownership; AI clients and each caller of them; background jobs, queues, and streams; webhooks; existing Nozle usage; tests and fixtures.
-3. Read environment variable names only when needed. Never read or copy credential values.
-4. Label each finding `confirmed` (seen in code, with `file:line`) or `inferred` (state the basis). Findings from code are statements, not questions for the user.
-5. For a shared client or function, list every caller before judging it. A client used by both paid and free features is not one billing decision.
+## Trace
 
-Where the host offers read-only subagents, one per area (identity, billing and checkout, AI clients, jobs and webhooks, tests) can scan in parallel. Where it does not, scan the areas in sequence. Questions to the user, approvals, and edits stay in the main conversation.
+1. Run `nozle-check env` and `nozle-check scan` on the absolute application path; read the manifests. In a monorepo, confirm the target app and keep every path inside it.
+2. Trace in order: authentication and customer identity; team or organization membership; payment, subscription and billing ownership; AI clients and every caller; jobs, queues and streams; webhooks; existing Nozle usage; tests and fakes.
+3. Read environment variable names only when needed, never values.
+4. Label each finding `confirmed` (`file:line`) or `inferred` (with its basis). Code facts are findings, not questions.
+5. For a shared client, list every caller before judging it; paid and free callers are separate decisions.
+6. Where the host offers subagents, run read-only `nozle-scanner` agents per area (identity, billing and checkout, AI clients, jobs and webhooks, tests) in parallel. Questions, approvals and edits stay in the main conversation.
+
+## Spending inventory
+
+When the product already spends credits or quotas, list every spending action before the menu, one row each with its own identifier (rule, action key, feature, event name), never merged:
+
+- where the check and the deduction happen, how the amount is computed, who is charged, retry and refund behavior;
+- sources: rule and feature tables (read from seeds and migrations), every route guarded by a feature or credit check, consumers that debit for other services, and credit calls the browser makes (propose a server route that owns the amount instead of dropping them);
+- management: how credits are granted, bought, split, expired, refunded, limited and logged; who holds a balance (company pool, per user, per team); how an owner delegates or takes back credits and who may; which balance each path draws from; whether totals add up;
+- volume: every operation that scales (emails, messages, requests, lookups, AI generations, invites, storage), whether it is counted per unit today, where (per recipient, message, request, batch), and whether failed or retried units count.
+
+An untraceable action is `unknown`. Untracked costly operations are suggestions, not faults. Members with their own balances or plans get a proposed entity mapping (capability 4). The inventory feeds the measure decisions (decision-questions.md).
 
 ## Linked services
 
-A folder can be one service of a larger product. Search for outbound service calls (base-URL and queue environment variables, hardcoded hostnames, HTTP clients, event and job names) and list those whose code is not present, including AI, credit and enrichment hosts called by services that are in the folder, with the apparent role of each. Ask the user where each lives (folder, repository, or unavailable) before concluding where AI calls, credits or billable usage happen. Work from the code that is present and mark conclusions that depend on a missing service `inferred`. When several services of one product are available, treat the common parent folder as the scope and keep paths inside the service being changed.
+Find calls to services not in the folder (base-URL and queue variables, hostnames, HTTP and RPC clients, shared tables, event names). List each with its apparent role (AI calls, credit deduction, sending) in a **Linked services** line, or say none were found. Ask where each lives (folder, repository, unavailable) before concluding where billable usage or credits happen; mark dependent conclusions `inferred`. Several services of one product: the common parent is the scope, and edits stay inside the service being changed.
 
-When the study ends without an account read (no login), the findings are not finished until `nozle-study.yaml` is written and validated; see "Works without a login" in the integrate skill.
+## Study file
+
+Without an account read, the study is not finished until `nozle-study.yaml` is written at the repository root (allowed by the guards even under "no edits"; no secrets) and validated with `nozle-check nozle-study.yaml`:
+
+`schema: nozle.study`, `version: 1`, `account_read: { status: not_read | read, read_at }`, `stack`, `existing` (from `nozle-check scan`), `activities` (`id`, `label`, `location` as `path:line`, `status`, optional `proposed_meter`), `linked_services`, `findings` (`id`, `text`, `location`), `source_files` (`path` and SHA-256 from `nozle-check hash`) for every file the findings rely on.
+
+After the login, `nozle-check study` lists changed files; reuse every finding from unchanged files, re-read only the changed ones, set `account_read` to `read` with `read_at`, and set each activity to `matched`, `suggested` or `partial`.
