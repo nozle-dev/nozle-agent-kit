@@ -4,7 +4,7 @@ Shared by setup, integrate, audit, and doctor.
 
 ## Connect
 
-The Nozle account MCP uses OAuth in the browser. Never ask for a pasted Nozle key. Ask for configuration read; request billing read only when targeted customer or usage evidence is needed. The connection is read-only.
+The Nozle account MCP uses OAuth in the browser. Never ask for a pasted Nozle key. The connection asks only for configuration read; there is no separate billing-read permission to request. The connection is read-only.
 
 Login trigger by host (vendor documentation; confirm against the installed host version):
 

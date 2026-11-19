@@ -1,6 +1,6 @@
 # Stack support: say which Nozle path applies
 
-Run `nozle-check env <application folder>` (as one plain command: `nozle-check env <absolute application folder>`, or `node <skill folder>/scripts/nozle-check.mjs env <folder>`; never chain it with `cd`; the target folder in a monorepo) and read its backend and frontend paths. It reads manifests only. Confirm the SDK list against the docs MCP `/sdks` pages at run time: the table below is the list when this was written, and a framework the docs now cover beats it. Never claim an SDK exists that the docs do not list.
+Run `nozle-check env <application folder>` (as one plain command: `nozle-check env <absolute application folder>`, or `node <skill folder>/scripts/nozle-check.mjs env <folder>`; never chain it with `cd`; the target folder in a monorepo) and read its backend and frontend paths. It reads manifests only. Confirm the SDK list, each SDK's runtime minimums and what each covers against the docs MCP `/sdks` pages at run time (`/sdks/<lang>/installation`, `/sdks/react/installation`): the table below is a starting point, and a framework or SDK the docs now cover beats it. Never claim an SDK exists that the docs do not list.
 
 ## First-response statement (required, before the menu)
 
@@ -15,11 +15,11 @@ Say, in your own words, all of this:
 ## The rules
 
 1. Secret-key calls (`sk_`) live on a server only. Server means Node, Python, or any language over REST. A browser, a static site, or a mobile app never holds a secret key.
-2. Backend: use `@nozle-js/node` on Node (>= 18; the package ships both ESM and CommonJS, so `import` and `require` both work), `nozle-sdk` on Python (>= 3.9; `Nozle` is synchronous, 0.13+ adds the asyncio `AsyncNozle`) and `github.com/nozle-dev/nozle-go` on Go (>= 1.22). On Workers or other edge runtimes, and in Ruby, Java, PHP or any language without an SDK, use the REST API with the same contract. Read the endpoint pages from the docs MCP.
-3. Frontend: `@nozle-js/react` only for React (>= 18; since 0.11 peer `@tanstack/react-query` v5, which is required; no `@stripe/*` packages are needed). Since 0.11 the components ignore Tailwind, host CSS and shadcn variables: theme them with `appearance` (themes from `@nozle-js/react/themes`), and list plans sold on request in `contactSalesPlans`. Customer billing hooks (`useSubscription`, `useEntitlement`, `useCreditBalance`, `useCreditHistory`, `useUsage`, `useInvoices`, `useInvoiceDownload`) read one backend route set as `BillingProvider billingEndpoint`, served on Node by `createBillingHandler(nozle, { getCustomerId })`. For Svelte, Vue, Nuxt, Angular, Solid, Astro, plain HTML or anything else, build small native components in the app's own framework. They read plans from a backend route (or the public catalog with a publishable `pk_` key) and call backend routes for checkout, gates and balances. The customer always comes from the authenticated session, never from the browser.
+2. Backend: use the Node SDK (`@nozle-js/node`) on Node, the Python SDK (`nozle-sdk`) on Python and the Go SDK (`github.com/nozle-dev/nozle-go`) on Go, at a runtime version its installation page supports. On Workers or other edge runtimes, and in Ruby, Java, PHP or any language without an SDK, use the REST API with the same contract. Read the endpoint pages from the docs MCP.
+3. Frontend: `@nozle-js/react` only for React, at the React version and peer packages its installation page lists; theme it the way its styling page says, and serve its customer billing hooks from the backend route the SDK pages describe. For Svelte, Vue, Nuxt, Angular, Solid, Astro, plain HTML or anything else, build small native components in the app's own framework. They read plans from a backend route (or the public catalog with a publishable `pk_` key) and call backend routes for checkout, gates and balances. The customer always comes from the authenticated session, never from the browser.
 4. Astro with a React integration can use a React island with `@nozle-js/react`. Offer that as one option next to native components, with the trade-off (a React runtime in an otherwise React-free site).
 5. No server code at all (static site, SPA): say so. Secret-key work needs a backend. Offer the choices (an SSR adapter or server route, a separate backend, or a managed backend) and do only the public-catalog display until the user decides.
-6. Environment problems are findings, not silent fixes: no dependency manifest, an out-of-sync lockfile, Node < 18, Python < 3.9, React < 18, an SDK version already installed. Say what you found and what it changes. Creating a missing manifest is an edit that needs the approved scope.
+6. Environment problems are findings, not silent fixes: no dependency manifest, an out-of-sync lockfile, a runtime or React version below what the SDK's installation page supports, an SDK version already installed. Say what you found and what it changes. Creating a missing manifest is an edit that needs the approved scope.
 7. Native components are application code. List them in the scope, keep them accessible, and note that Nozle ships no styling for them.
 
 ## Framework notes
@@ -32,8 +32,8 @@ Say, in your own words, all of this:
 | Vue, Nuxt | Nuxt server routes use the Node SDK; plain Vue needs a backend | Native Vue | Nuxt on edge presets: REST |
 | Angular | Needs a separate backend | Native Angular | Same as any SPA |
 | Express, Fastify, Hono, Nest | Node SDK | Whatever the frontend is | Hono on Workers: REST |
-| FastAPI, Django, Flask | Python SDK | Whatever the frontend is | `AsyncNozle` under async handlers (0.13+); otherwise wrap synchronous calls in a thread |
-| Go | Go SDK (`nozle-go`) | Native | Go >= 1.22 |
+| FastAPI, Django, Flask | Python SDK | Whatever the frontend is | The SDK's async client under async handlers; otherwise wrap synchronous calls in a thread |
+| Go | Go SDK (`nozle-go`) | Native | The Go version its installation page lists |
 | Ruby, PHP, Java | REST from the backend | Native | No SDK |
 | Mobile apps | REST through the merchant backend | Native UI | The app never holds a secret |
 

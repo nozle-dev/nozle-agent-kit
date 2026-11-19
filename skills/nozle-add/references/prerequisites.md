@@ -16,14 +16,14 @@ No capability works alone. When the user names one thing ("add credits", "track 
 
 | # | Capability | Also depends on |
 |---|---|---|
-| 1 | Pricing and plans | Plans in the account; a mapping from the app's tiers to plan codes; plan charges and limits for display (the public catalog response carries them even though the React type declares only code, name, price and interval; pass only the fields you show, because the response also holds internal counts and ids) |
+| 1 | Pricing and plans | Plans in the account; a mapping from the app's tiers to plan codes; plan charges and limits for display, read from the catalog response the docs describe (pass only the fields you show) |
 | 2 | Checkout and payments | 1; a payment provider connected in the dashboard; the return-URL allowlist on the backend; a webhook endpoint (9) so activation follows confirmed payment, not the redirect |
 | 3 | Subscriptions | 1; who owns subscription creation (one code path); the organization's cancellation and change policies; 2 for paid plans |
-| 4 | Credits and top-ups | A credit system with a rate for each billable feature (dashboard only); a plan credit grant rule or a top-up package; consumable meters (count or sum aggregation); exactly one active subscription for the customer (credit consumption fails with no subscription or with two); the spend paths wired to `usage.track` (5); stable keys; for purchased top-ups 2 and 9; for people under a company, entities and a pool policy |
+| 4 | Credits and top-ups | A credit system with a rate for each billable feature (dashboard only); a plan credit grant rule or a top-up package; consumable meters (count or sum aggregation); exactly one active subscription for the customer (credit consumption fails with no subscription or with two); the spend paths wired to `nozle.usage.track()` (5); stable keys; for purchased top-ups 2 and 9; for people under a company, entities and a pool policy |
 | 5 | Usage tracking | A meter whose code matches what the code sends; exactly one active subscription (or an explicit subscription id); the spend points with a stable id per unit; a plan that includes the feature, so events have something to bill against |
-| 6 | Feature access and limits | A plan entitlement per gated feature (limit and hard or soft); the meter behind a usage limit (5); one server check right before the work, plus `usage.track` where enforcement and consumption must be one step |
+| 6 | Feature access and limits | A plan entitlement per gated feature (limit and hard or soft); the meter behind a usage limit (5); one server check right before the work, plus `nozle.usage.track()` where enforcement and consumption must be one step |
 | 7 | Costs and margins | Usage attribution per customer and feature (5, or cost events with the customer id); cost meters and a published Cost Sheet with rates for each provider and model; the cost composition per feature; manual reporting where no auto-capture exists |
-| 8 | Customer billing dashboard | Backend routes that return the customer's own plan, usage, credits and invoices (on Node with React, one `createBillingHandler` route serves every React billing hook; the customer comes only from the session); 1, 3 and 4 data as needed; React components or native screens |
+| 8 | Customer billing dashboard | Backend routes that return the customer's own plan, usage, credits and invoices (the customer comes only from the session; see capability 8); 1, 3 and 4 data as needed; React components or native screens |
 | 9 | Billing and data sync | A webhook endpoint registered in the dashboard; signature verification; deduplication and out-of-order handling; a mapping from Nozle customers and subscriptions to application records |
 | 10 | Move existing billing to Nozle | An ownership map (who owns customers, payments and subscriptions during and after the move); a supported provider connection; a migration plan per existing subscriber (checkout at the next renewal or now); a drain for existing app balances |
 
@@ -31,7 +31,7 @@ No capability works alone. When the user names one thing ("add credits", "track 
 
 Example: "add credits".
 1. Base: B1 to B5 (is there a server, a key variable, a payer, a customer record, an onboarded organization?).
-2. 4's chain: credit system and rates (account), a grant rule or package (account), consumable meters (account), one active subscription (account and code: who creates it, free plan at signup), the spend paths on `usage.track` with stable keys (code), and 2 and 9 only if purchased credits are in scope.
+2. 4's chain: credit system and rates (account), a grant rule or package (account), consumable meters (account), one active subscription (account and code: who creates it, free plan at signup), the spend paths on `nozle.usage.track()` with stable keys (code), and 2 and 9 only if purchased credits are in scope.
 3. Show each row as present or missing with its evidence, name the dashboard steps and code steps, and plan them in dependency order. If a dependency is only possible with a decision the user has not made (payer, charge order, rollout), ask it before the scope.
 
 If a dependency cannot be met (no server, an unsupported provider, an item the account cannot model), say so plainly and name the options; do not build the dependent part.
