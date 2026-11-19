@@ -6,13 +6,14 @@ const KEY = "sk_nozle_testkey1234567890";
 let server: ReturnType<typeof Bun.serve>;
 let requests: { method: string; path: string; auth: string | null; body: any }[] = [];
 let status = 202;
+let reply = "";
 
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
     async fetch(req) {
       requests.push({ method: req.method, path: new URL(req.url).pathname, auth: req.headers.get("authorization"), body: await req.json() });
-      return new Response(status < 300 ? '{"ok":true}' : `{"error":"rejected, key ${KEY} is wrong"}`, { status });
+      return new Response(reply || (status < 300 ? '{"ok":true}' : `{"error":"rejected, key ${KEY} is wrong"}`), { status });
     },
   });
 });
@@ -26,15 +27,50 @@ async function run(args: string[], env: Record<string, string> = {}) {
 }
 const base = () => `http://127.0.0.1:${server.port}`;
 const required = ["--customer", "cust_1", "--event", "llm_requests", "--subscription", "sub_1"];
+const send = [...required, "--timestamp", "1785839400"];
 
 describe("nozle-first-event", () => {
-  test("sends the timestamp as Unix seconds, the format the Events API accepts", async () => {
+  test("posts to the Engine events endpoint by default", async () => {
+    const result = await run(required);
+    expect(result.out).toContain("POST https://api.nozle.app/engine/api/v1/events");
+  });
+
+  test("a rerun sends the identical event: same transaction id and the same timestamp", async () => {
     requests = [];
     status = 202;
-    await run([...required, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY });
-    const ts = requests[0]?.body.event.timestamp;
+    reply = "";
+    await run([...send, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY });
+    await run([...send, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.body).toEqual(requests[0]!.body);
+    expect(requests[0]!.body.event.timestamp).toBe(1785839400);
+  });
+
+  test("the dry run fixes a timestamp and prints the exact command that sends it", async () => {
+    const result = await run([...required, "--base", base()]);
+    const ts = JSON.parse(result.out.slice(result.out.indexOf("{"), result.out.lastIndexOf("}") + 1)).event.timestamp;
     expect(Number.isInteger(ts)).toBe(true);
     expect(Math.abs(ts - Date.now() / 1000)).toBeLessThan(60);
+    expect(result.out).toContain(`--timestamp ${ts} --yes`);
+  });
+
+  test("refuses to send without a fixed timestamp, or with one that is not Unix seconds", async () => {
+    requests = [];
+    expect((await run([...required, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY })).err).toContain("--timestamp");
+    expect((await run([...required, "--timestamp", "2026-11-19", "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY })).code).toBe(2);
+    expect(requests).toHaveLength(0);
+  });
+
+  test("explains a refusal by its code, not its text", async () => {
+    status = 409;
+    reply = '{"status":409,"error":"x","code":"period_invoiced"}';
+    const late = await run([...send, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY });
+    expect(late.code).toBe(1);
+    expect(late.err).toContain("invoiced");
+    status = 402;
+    reply = '{"status":402,"error":"x","code":"customer_payment_overdue"}';
+    expect((await run([...send, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY })).err).toContain("unpaid invoices");
+    reply = "";
   });
 
   test("dry run prints the exact request and sends nothing, even with a key set", async () => {
@@ -51,7 +87,7 @@ describe("nozle-first-event", () => {
   test("--yes sends one authenticated event with a stable transaction id and never prints the key", async () => {
     requests = [];
     status = 202;
-    const result = await run([...required, "--properties", '{"tokens":5}', "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY });
+    const result = await run([...send, "--properties", '{"tokens":5}', "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY });
     expect(result.code).toBe(0);
     expect(requests).toHaveLength(1);
     expect(requests[0]!.method).toBe("POST");
@@ -63,7 +99,7 @@ describe("nozle-first-event", () => {
 
   test("a rejected event exits non-zero, explains, and scrubs the key from the server's reply", async () => {
     status = 422;
-    const result = await run([...required, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY });
+    const result = await run([...send, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: KEY });
     expect(result.code).toBe(1);
     expect(result.err).toContain("not accepted");
     expect(result.out + result.err).not.toContain(KEY);
@@ -72,8 +108,8 @@ describe("nozle-first-event", () => {
 
   test("refuses to send without a key, with a publishable key, or with missing arguments", async () => {
     requests = [];
-    expect((await run([...required, "--base", base(), "--yes"])).code).toBe(2);
-    expect((await run([...required, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: "pk_nozle_publishable123" })).err).toContain("secret key");
+    expect((await run([...send, "--base", base(), "--yes"])).code).toBe(2);
+    expect((await run([...send, "--base", base(), "--yes"], { NOZLE_SECRET_KEY: "pk_nozle_publishable123" })).err).toContain("secret key");
     expect((await run(["--customer", "c"])).code).toBe(2);
     expect(requests).toHaveLength(0);
   });
