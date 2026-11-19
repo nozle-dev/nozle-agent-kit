@@ -2,6 +2,26 @@
 
 Each release raises the version in every manifest (`bun scripts/release.ts <version>`). Claude Code and Codex cache an installed plugin by version, so a change shipped without a new version doesn't reach anyone who already installed it.
 
+## [1.3.0] - unreleased
+
+### Changed
+- **Docs first.** The skills no longer carry Nozle's API facts (endpoints and their service, fields, SDK method names and signatures, minimum versions, defaults, limits, error codes); those went stale within weeks of each release. They keep the workflow, the approval gates and the money rules, and the new `docs-lookup.md` says which docs page answers each need, how to query the bundled docs MCP (`search_nozle`, `query_docs_filesystem_nozle`, the OpenAPI file) and how to confirm an SDK name in the installed SDK's type definitions. `api-map.md` and `runtime-contracts.md` are removed; the capability guides, `stack-support.md` and `plan-design.md` point at pages instead of restating them.
+- **Each skill ships only the references it reads** (`scripts/sync-skills.ts` follows the names from its `SKILL.md`), and the first-event script only where a reference tells the user to run it.
+- The account connection no longer asks for a billing-read permission (the scope was removed from the server).
+
+### Fixed
+- **Refusals by exact code.** `financial-rules.md` gains "Refusals and errors". A `409 period_invoiced` (usage dated in an invoiced period) is no longer treated as a caller bug and retried forever: the unit follows the user's late-usage choice (resend once with a current timestamp and store it, a one-off invoice, or let it go). A conflict from a changed payload stays a caller bug. The build check now asks for the `period_invoiced` branch by code instead of any 409.
+- **Customers blocked for unpaid invoices** (`402 customer_payment_overdue`, `402 customer_blocked`) are a customer state, not a configuration error: gates and billing screens show a pay path (unpaid invoices with a pay link, or the billing page), never retry, and never page on-call. The build check flags a retry of these refusals.
+- **SDK retries** are no longer described as off by default; the agent reads the default from the SDK page and does not stack an app retry loop on it.
+- **First-event check** posts to the Engine events endpoint (it posted to Core), and a rerun sends the identical event: the dry run fixes a timestamp and prints the command, and `--yes` requires that `--timestamp`. A refusal is explained by its code. The agent still never runs it.
+- Capability guides cover what changed since 1.2.0 through docs lookups: voiding an event, archived plans, checkout under Stripe Tax, customer erase and delete (and no email address as an external id), cost events with the real vendor and every token type, and paying overdue invoices, receipts and refunds in the billing dashboard.
+
+### Added
+- **Drift check** (`tests/drift.test.ts`): fails when a docs page, a `<status> <code>` or a `nozle.<method>()` the kit names is missing from the current docs navigation or SDK sources.
+- **Evals** for `claude plugin eval` in `evals/`, with mocks for both MCP servers: late usage (409), an overdue customer, the first-event check, and a docs lookup for an SDK method.
+
+Versions 1.1.0 and 1.2.0 were never tagged or released; 1.3.0 includes them.
+
 ## [1.2.0] - unreleased
 
 ### Added
